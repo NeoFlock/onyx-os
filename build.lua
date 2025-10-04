@@ -1,0 +1,74 @@
+#!/usr/bin/env lua
+-- Build script
+
+local toBuild = {
+	"onyx",
+}
+
+if #arg > 0 then
+	toBuild = {}
+	for i=1,#arg do
+		table.insert(toBuild, arg[i])
+	end
+end
+
+local built = {}
+
+local buildInfo = {
+	onyx = {
+		type = "none",
+		deps = {
+			"kocos", -- need the kernel, obviously
+		},
+	},
+	kocos = {
+		type = "cat",
+		files = {
+			"usr/src/kocos/bootstrap.lua",
+			"usr/src/kocos/utils.lua",
+			"usr/src/kocos/event.lua",
+			"usr/src/kocos/printk.lua",
+			"usr/src/kocos/errno.lua",
+			"usr/src/kocos/drivers.lua",
+			"usr/src/kocos/debugger.lua",
+			"usr/src/kocos/fs.lua",
+			"usr/src/kocos/process.lua",
+			"usr/src/kocos/require.lua",
+			"usr/src/kocos/exec.lua",
+			"usr/src/kocos/syscalls.lua",
+			"usr/src/kocos/boot.lua",
+		},
+		out = "kernel",
+		deps = {},
+	},
+}
+
+local function runBuild(thing)
+	if built[thing] then return end
+	built[thing] = true
+	local entry = buildInfo[thing]
+
+	if entry.deps then
+		for _, dep in ipairs(entry.deps) do runBuild(dep) end
+	end
+
+	print("Building", thing)
+
+	if entry.type == "cat" then
+		-- Directly merge files
+		local outcode = ""
+		for _, file in ipairs(entry.files) do
+			local f = assert(io.open(file, "rb"))
+			outcode = outcode .. assert(f:read("*all"), "no code")
+			f:close()
+		end
+		local f = assert(io.open(entry.out, "wb"))
+		f:write(outcode)
+		f:flush()
+		f:close()
+	end
+end
+
+for i=1,#toBuild do
+	runBuild(toBuild[i])
+end

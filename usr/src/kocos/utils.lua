@@ -1,0 +1,255 @@
+function table.copy(t)
+	if type(t) == "table" then
+		local nt = {}
+		for k, v in pairs(t) do
+			nt[k] = v
+		end
+		return nt
+	else
+		return t
+	end
+end
+
+local luaglobals = {
+	"_VERSION",
+	"_OSVERSION",
+	"_KVERSION",
+	"assert",
+	"error",
+	"getmetatable",
+	"ipairs",
+	"next",
+	"pairs",
+	"pcall",
+	"rawequal",
+	"rawget",
+	"rawset",
+	"rawlen",
+	"select",
+	"setmetatable",
+	"tonumber",
+	"tostring",
+	"type",
+	"xpcall",
+	"bit32",
+	"table",
+	"string",
+	"math",
+	"debug",
+	"os",
+	"checkArg",
+	"unicode",
+	"utf8",
+	"coroutine",
+	"load",
+	"syscall",
+	"require",
+	"package",
+}
+
+---@param src? _G
+---@return _G
+function table.luaglobals(src)
+	src = src or _G
+	local namespace = {}
+
+	namespace._G = namespace
+
+	for _, k in ipairs(luaglobals) do
+		namespace[k] = table.copy(src[k])
+	end
+
+	return namespace
+end
+
+local function isGoodKey(s)
+	return type(s) == "string" and string.format("%q", s) == ('"' .. s .. '"')
+end
+
+function table.serialize(val, refs)
+	refs = refs or {}
+	if type(val) == "table" then
+		if refs[val] then return "..." end
+		refs[val] = true
+		if getmetatable(val) and getmetatable(val).__tostring then
+			return tostring(val)
+		end
+		local s = "{"
+		local list = {}
+		local done = {}
+		for i, item in ipairs(val) do
+			done[i] = true
+			table.insert(list, table.serialize(item, refs))
+		end
+		for k, v in pairs(val) do
+			if not done[k] then
+				done[k] = true
+				local pair = ""
+				if isGoodKey(k) then
+					pair = k
+				else
+					pair = "[" .. table.serialize(k, refs) .. "]"
+				end
+				k = k .. " = " .. table.serialize(v, refs)
+				table.insert(list, k)
+			end
+		end
+		s = s .. table.concat(list, ", ")
+		s = s .. "}"
+		return s
+	elseif type(val) == "string" then
+		return string.format("%q", val)
+	else
+		return tostring(val)
+	end
+end
+
+---@param memory integer
+---@param spacing? string
+function string.memformat(memory, spacing)
+	spacing = spacing or ""
+
+	local units = {"B", "KiB", "MiB", "GiB", "TiB", "PiB"}
+	local scale = 1024
+
+	while #units > 1 and memory >= scale do
+		memory = memory / scale
+		table.remove(units, 1)
+	end
+
+	return string.format("%.2f%s%s", memory, spacing, units[1])
+end
+
+---@param inputstr string
+---@param sep string
+---@return string[]
+function string.split(inputstr, sep)
+  if sep == nil then
+    sep = "%s"
+  end
+  local t = {}
+  for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+    table.insert(t, str)
+  end
+  return t
+end
+
+---@param s string
+---@param prefix string
+function string.startswith(s, prefix)
+    return s:sub(1, #prefix) == prefix
+end
+
+---@param s string
+---@param suffix string
+function string.endswith(s, suffix)
+    return s:sub(-#suffix) == suffix
+end
+
+---@param s string
+---@param l integer
+---@param c? string
+--- We assure you this will not break npm
+function string.leftpad(s, l, c)
+    if #s > l then return s end
+    c = c or " "
+    return string.rep(c, l - #s) .. s
+end
+
+---@param s string
+---@param l integer
+---@param c? string
+function string.rightpad(s, l, c)
+    if #s > l then return s end
+    c = c or "\0"
+    return s .. string.rep(c, l - #s)
+end
+
+---@param x number
+---@param min number
+---@param max number
+function math.clamp(x, min, max)
+    return math.min(max, math.max(x, min))
+end
+
+---@param x number
+---@param min1 number
+---@param max1 number
+---@param min2 number
+---@param max2 number
+function math.map(x, min1, max1, min2, max2)
+    return min2 + ((x - min1) / (max1 - min1)) * (max2 - min2)
+end
+
+-- Take in a binary and turn it into a GUID
+-- Bin can be above 16 bytes.
+-- If bin is less than 16 bytes, it is padded with 0s
+---@param bin string
+function BinToUUID_direct(bin)
+    local digits4 = "0123456789abcdef"
+
+    local base16d = ""
+    for i=1,16 do
+        local byte = string.byte(bin, i, i)
+        if not byte then byte = 0 end
+        local upper = math.floor(byte / 16) + 1
+        local lower = byte % 16 + 1
+        base16d = base16d .. digits4:sub(upper, upper) .. digits4:sub(lower, lower)
+    end
+
+    local guid = base16d:sub(1, 8) .. "-"
+        .. base16d:sub(9, 12) .. "-"
+        .. base16d:sub(13, 16) .. "-"
+        .. base16d:sub(17, 20) .. "-"
+        .. base16d:sub(21)
+
+    return guid
+end
+
+---@param name string
+---@param path string
+---@param sep? string
+---@param rep? string
+---@return string? filename, string? errmsg
+function package.searchpath(name, path, sep, rep)
+	sep = sep or "."
+	rep = rep or "/"
+
+	name = name:gsub("%" .. sep, rep)
+
+	local paths = string.split(path, ';')
+
+	for _, p in ipairs(paths) do
+		local toCheck = p:gsub("%?", name)
+		local fd = syscall("open", toCheck, "r")
+		if fd then
+			syscall("close", fd)
+			return toCheck
+		end
+	end
+end
+
+function dofile(filename, ...)
+	return assert(loadfile(filename))(...)
+end
+
+function loadfile(filename, mode, env)
+	local fd, err = syscall("open", filename, "r")
+	if err then return nil, err end
+
+	local code = ""
+	while true do
+		local data, err2 = syscall("read", fd, math.huge)
+		if err2 then
+			syscall("close", fd)
+			return nil, err2
+		end
+		if not data then break end
+		code = code .. data
+		coroutine.yield()
+	end
+
+	syscall("close", fd)
+
+	return load(code, "=" .. filename, mode, env)
+end

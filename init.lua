@@ -1,0 +1,25 @@
+local fs = computer.getBootAddress()
+
+---@type Kocos.config
+local kargs = {}
+
+kargs.debugger = component.list("ocelot")()
+
+component.invoke(kargs.debugger, "clearLog")
+component.invoke(kargs.debugger, "log", "Selected as KGDB")
+
+local kernelCode = ""
+local kernelF = assert(component.invoke(fs, "open", "kernel"))
+
+while true do
+	local code, err = component.invoke(fs, "read", kernelF, math.huge)
+	if err then
+		error(err)
+	end
+	if not code then break end
+	kernelCode = kernelCode .. code
+end
+
+_OSVERSION = "ONYX v0.0.1"
+
+assert(load(kernelCode, "=kocos"))("kocos", kargs)
