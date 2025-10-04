@@ -21,6 +21,11 @@ function Kocos._scr_reader(...)
 	-- nothing to react to
 end
 
+---@return string[]
+function Kocos.scr_addrs()
+	return {}
+end
+
 local gpu, screen = component.list("gpu")(), component.list("screen")()
 
 if gpu and screen then
@@ -96,6 +101,11 @@ if gpu and screen then
 		local oldbuf = keybuf
 		keybuf = ""
 		return oldbuf
+	end
+
+	---@return string[]
+	function Kocos.scr_addrs()
+		return {gpu, screen, keyboard}
 	end
 end
 
