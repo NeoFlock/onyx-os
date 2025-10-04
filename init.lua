@@ -5,8 +5,10 @@ local kargs = {}
 
 kargs.debugger = component.list("ocelot")()
 
-component.invoke(kargs.debugger, "clearLog")
-component.invoke(kargs.debugger, "log", "Selected as KGDB")
+if kargs.debugger then
+	component.invoke(kargs.debugger, "clearLog")
+	component.invoke(kargs.debugger, "log", "Selected as KGDB")
+end
 
 local kernelCode = ""
 local kernelF = assert(component.invoke(fs, "open", "kernel"))
