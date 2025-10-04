@@ -183,6 +183,42 @@ function syscalls.readmod(module)
 	return nil, errno.ENOENT
 end
 
+function syscalls.clist()
+	local t = {}
+	for addr, type in component.list() do
+		t[addr] = type
+	end
+	return t
+end
+
+function syscalls.cmethods(addr)
+	return component.methods(addr)
+end
+
+function syscalls.cinvoke(addr, method, ...)
+	return component.methods(addr, method, ...)
+end
+
+function syscalls.cproxy(addr)
+	return component.proxy(addr)
+end
+
+function syscalls.cprimary(type)
+	return component.getPrimary(type)
+end
+
+function syscalls.cfields(addr)
+	return component.fields(addr)
+end
+
+function syscalls.cdoc(addr, method)
+	return component.doc(addr, method)
+end
+
+function syscalls.cslot(addr)
+	return component.slot(addr)
+end
+
 Kocos.syscalls = syscalls
 
 ---@diagnostic disable: lowercase-global
