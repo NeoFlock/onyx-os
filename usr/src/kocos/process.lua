@@ -16,7 +16,7 @@ process.npid = 0
 ---@field file? Kocos.fs.FileDescriptor
 
 ---@class Kocos.process
----@field state "running"|"dying"|"dead"
+---@field state "running"|"dying"|"dead"|"finished"
 ---@field pid integer
 ---@field uid integer
 ---@field gid integer
@@ -246,6 +246,7 @@ function process.close(proc)
 	end
 
 	process.allProcs[proc.pid] = nil -- and he's gone
+	proc.state = "dead"
 end
 
 ---@param proc Kocos.process
@@ -365,6 +366,11 @@ function process.isDead(pid)
 end
 
 ---@param proc Kocos.process
+function process.isRunning(proc)
+	return proc.state == "running"
+end
+
+---@param proc Kocos.process
 function process.resume(proc)
 	if proc.stopped then return end
 	if proc.deadline > computer.uptime() then return end -- yeah, I've got time
@@ -376,6 +382,7 @@ function process.resume(proc)
 	if not ok then Kocos.printkf(Kocos.L_ERROR, "Process %d crashed: %s", proc.pid, debug.traceback(proc.thread, err)) end
 	if process.isDead(proc.pid) then return end
 	if coroutine.status(proc.thread) == "dead" then
+		proc.state = "finished"
 		if proc.parent then
 			process.raise(proc.parent, process.SIGCHLD, proc.pid)
 		end
