@@ -146,7 +146,7 @@ setmetatable(keyboard.keys,
 })
 
 function keyboard.isControl(char)
-  return type(char) == "number" and (char < 0x20 or (char >= 0x7F and char <= 0x9F))
+  return char < 0x20 or (char >= 0x7F and char <= 0x9F)
 end
 
 -- Our custom extensions
@@ -166,11 +166,11 @@ function keyboard.charToCode(n)
 end
 
 function keyboard.isPrintable(char)
-    return type(char) == "number" and (char >= 32 and char <= 126) or (char > 127)
+    return ((char >= 32 and char <= 126) or (char > 127))
 end
 
 function keyboard.isTerminalPrintable(char)
-    return keyboard.isPrintable(char) and (char >= 8 and char <= 13)
+    return keyboard.isPrintable(char) or (char >= 8 and char <= 13) or (char == 127)
 end
 
 return keyboard
