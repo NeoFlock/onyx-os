@@ -1,10 +1,10 @@
 --!lua
 
-assert(syscall("write", 1, "Welcome to " .. _OSVERSION .. "\n"))
+assert(syscall("write", 1, "Welcome to \x1b[38;5;2m" .. _OSVERSION .. "\x1b[0m\n"))
 
-print("Hello, world!")
+-- TODO: boot services
 
-Kocos.printk(Kocos.L_AUTOFIX, "Disabling kernel logger...")
+assert(syscall("chdir", "/home"))
 
-Kocos.disableScreenLogging = true
-Kocos.disableDefaultPanicHandler = true
+-- Go directly to shell for now
+assert(syscall("exec", "/bin/sh", nil, nil, table.luaglobals()))

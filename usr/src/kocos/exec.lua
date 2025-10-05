@@ -29,11 +29,16 @@ function Kocos._default_luaExec(ev, path, f, namespace)
 	return {
 		init = function()
 			require(Kocos.args.luaExecRT or "luart")
-			local exitcode = init(table.unpack(Kocos.process.current.args))
-			if type(exitcode) == "number" then
-				Kocos.process.current.exitcode = math.floor(exitcode)
+			local ok, exitcode = xpcall(init, debug.traceback, table.unpack(Kocos.process.current.args))
+			if ok then
+				if type(exitcode) == "number" then
+					Kocos.process.current.exitcode = math.floor(exitcode)
+				else
+					Kocos.process.current.exitcode = 0
+				end
 			else
-				Kocos.process.current.exitcode = 0
+				syscall("write", 2, exitcode)
+				Kocos.process.current.exitcode = 1
 			end
 		end,
 		deps = {Kocos.args.luaExecRTF},

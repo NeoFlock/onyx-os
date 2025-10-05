@@ -159,6 +159,7 @@ function keyboard.charToCode(n)
     -- TODO: complete
     local map = {
         ["\n"] = "enter",
+        ["\r"] = "enter",
         ["\b"] = "back",
     }
     c = map[c] or c
@@ -170,7 +171,7 @@ function keyboard.isPrintable(char)
 end
 
 function keyboard.isTerminalPrintable(char)
-    return keyboard.isPrintable(char) or (char >= 8 and char <= 13) or (char == 127)
+    return keyboard.isPrintable(char) or (char >= 3 and char <= 24) or (char == 127)
 end
 
 return keyboard

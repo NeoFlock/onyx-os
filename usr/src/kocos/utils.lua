@@ -58,6 +58,7 @@ function table.luaglobals(src)
 	for _, k in ipairs(luaglobals) do
 		namespace[k] = table.copy(src[k])
 	end
+	namespace.package.loaded = {} -- fixed SO MUCH BS
 
 	return namespace
 end

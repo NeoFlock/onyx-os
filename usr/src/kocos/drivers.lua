@@ -19,4 +19,4 @@ function Kocos.removeDriver(driver)
 	Kocos.event.notifyListeners("driver_removed", driver)
 end
 
-Kocos.printk(Kocos.L_INFO, "driver system loaded")
+Kocos.printk(Kocos.L_DEBUG, "driver system loaded")

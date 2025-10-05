@@ -1,0 +1,6 @@
+--!lua
+
+-- Symlinks may not always be available, so, we just exec
+local argv = assert(syscall("argv"))
+
+assert(syscall("exec", "/bin/ash.lua", argv))

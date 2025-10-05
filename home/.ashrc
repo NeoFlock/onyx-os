@@ -1,0 +1,3 @@
+# vim: set ft=bash:
+
+echo hello from test script

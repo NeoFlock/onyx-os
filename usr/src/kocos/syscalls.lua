@@ -113,6 +113,12 @@ function syscalls.exists(path)
 end
 
 ---@param path string
+---@return string
+function syscalls.absolutepath(path)
+	return process.resolve(process.current, path)
+end
+
+---@param path string
 ---@return boolean?, string?
 function syscalls.validlink(path)
 	path = process.resolve(process.current, path)
@@ -219,9 +225,37 @@ function syscalls.cslot(addr)
 	return component.slot(addr)
 end
 
+---@param pid integer
+---@return integer
+function syscalls.waitpid(pid)
+	local proc = process.allProcs[pid]
+	if not proc then return 0 end
+	while true do
+		if not process.isRunning(proc) then
+			process.close(proc)
+			return proc.exitcode
+		end
+		coroutine.yield()
+	end
+end
+
+---@param dir string
+---@return string?, string?
+function syscalls.chdir(dir)
+	if type(dir) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	if dir == "." then return process.current.cwd end
+	dir = process.resolve(process.current, dir)
+	process.current.cwd = dir
+	return dir
+end
+
 Kocos.syscalls = syscalls
 
 ---@diagnostic disable: lowercase-global
+---@param sysname string
+---@return ...
 function syscall(sysname, ...)
 	local cur = process.current
 	if process.isDead(cur.pid) then return nil, errno.ECHILD end
@@ -236,6 +270,10 @@ function syscall(sysname, ...)
 		-- inform the tracer
 		local ret = t[1] and {table.unpack(t, 2)} or {nil, t[2]}
 		process.raise(cur.tracer, process.SIGSYSR, cur.pid, sysname, {...}, ret)
+	end
+
+	if not process.isRunning(process.current) then
+		coroutine.yield() -- we're dead
 	end
 
 	if t[1] then

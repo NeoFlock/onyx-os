@@ -24,4 +24,6 @@ end
 
 _OSVERSION = "ONYX v0.0.1"
 
-assert(load(kernelCode, "=kocos"))("kocos", kargs)
+local f = assert(load(kernelCode, "=kocos"))
+kernelCode = nil -- allow it to be GC'd
+f("kocos", kargs)

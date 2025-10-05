@@ -99,7 +99,7 @@ If used for architectures or on platforms which may require **link information**
 
 ## Terminal Output Sequences
 
-Effectively just [https://en.wikipedia.org/wiki/ANSI_escape_code#C0_control_codes](ANSI)
+Effectively just [https://en.wikipedia.org/wiki/ANSI_escape_code](ANSI)
 
 ### C0 control codes
 
@@ -111,13 +111,86 @@ Effectively just [https://en.wikipedia.org/wiki/ANSI_escape_code#C0_control_code
 - `0x0D` (`\r`) Carriage Return, move the cursor to the start of the current line
 - `0x1b` (`\x1b`) Escape, start an escape sequence
 
+### Fe Escape sequences
+
+- `ESC \` - string terminator (important for OSC)
+- `ESC ]` - OSC, terminated by `ESC \` or `BEL` (byte `0x07`, `\a`, and it does not make a noise), Operating System Command, covered later
+- `ESC [` - CSI, terminated by a byte between `0x40` and `0x7E`.
+
+### Fp Escape Sequences
+
+- `ESC 7` - save cursor position
+- `ESC 8` - restore cursor to last saved position
+
 ### CSI
 
-TODO: CSI sequences
+- `CSI n A` - move cursor up. Default of `n` is 1.
+- `CSI n B` - move cursor down. Default of `n` is 1.
+- `CSI n C` - move cursor forward (right). Default of `n` is 1.
+- `CSI n D` - move cursor backward (left). Default of `n` is 1.
+- `CSI n E` - move cursor to the beginning of line, and then `n` lines down (default 1).
+- `CSI n F` - move cursor to the beginning of line, and then `n` lines up (default 1).
+- `CSI n G` - move cursor to the column `n` (default 1).
+- `CSI n;m H` - move cursor to the nth row and mth column. Both default to 1.
+- `CSI n J` - Clears part or the entirety of the screen. `n` defaults to 0. If `n` is 0, clears from the cursor to the end of the screen. If n is `1`, it clears
+from the cursor to the start of the screen. if n is `2`, it clears the entire screen.
+- `CSI n K` - Similar to `J`, except it is in terms of the *current line*, not the entire screen.
+- `CSI n S` - Scroll up `n` lines (defaults to 1).
+- `CSI n T` - Scroll down `n` lines (defaults to 1).
+- `CSI ... m` - An SGR (Select Graphic Rendition) operation. Documented later.
+- `CSI 6 n` - A DSR (Device Status Report) operation. It will respond with `CSI n;m R`, where n is the cursor x and m is the cursor y.
+- `CSI 7 n` - Like DSR, except n is the columns and m is the rows
+- `CSI 8 n` - Like DSR, except n is the maximum amount of colums supported and m is the maximum amount of rows supported
+- `CSI 5 i` - Enable AUX port. The aux port may be an associated output device.
+- `CSI 4 i` - Disable AUX port.
+- `CSI ?25 h` - Shows the cursor. The cursor may blink, but it will certainly move. Currently does nothing in the KOCOS virtual terminal.
+- `CSI ?25 l` - Hides the cursor.
+- `CSI ?1004 h` - Enables focus reporting. The terminal will output `CSI I` when entering focus and `CSI O` when exiting focus.
+- `CSI ?1004 l` - Disables focus reporting.
+- `CSI ?2004 h` - Enables key-release reporting.
+- `CSI ?2004 l` - Disables key-release reporting.
+
+TODO: scrollable region controls
+
+### SGR (CSI)
+
+A sequence of `;`-separated numbers. If none are present, a `0` is added implicitly.
+
+- `0` - Reset graphical attributes.
+- `7` - Swap foreground and background colors.
+- `8` - Disable displaying output.
+- `28` - Enable displaying output.
+- `30 - 37` - Set foreground color (0-7)
+- `38;5;n` - Set foreground color as entry `n` (0-255) in 256color table.
+- `38;2;r;g;b` - Set foreground color as entry RGB color (`r`, `g` and `b` being 0-255).
+- `39` - Set foreground color to default.
+- `40 - 47` - Set background color (0-7)
+- `48;5;n` - Set background color as entry `n` (0-255) in 256color table.
+- `48;2;r;g;b` - Set background color as entry RGB color (`r`, `g` and `b` being 0-255).
+- `49` - Set background color to default.
+- `90-97` - Set bright foreground color (8-15)
+- `100-107` - Set bright background color (8-15)
+
+### GPU (CSI)
+> Take from UlOS, these escapes allow GPU operations encoded in CSIs
+
+- `CSI 1;x;y;w;h;c U`, which will perform `gpu.fill(x, y, w, h, unicode.char(c))`
+- `CSI 2;x;y;w;h;dx;dy U`, which will perform `gpu.copy(x, y, w, h, dx, dy)`
+
+### VRAM buffers (CSI)
+> TODO: VRAM buffers
+
+- `CSI 1 v`, responds like DSR, except the `x` stores the free VRAM memory and `y` stores the total VRAM memory
+
+These escapes may not always be supported (ie. on terminals backed by other hardware or on older versions of OC), and thus using them may cause issues.
+It is possible to check by seeing if the total VRAM memory is above 0. Terminals should respond with 0 if it isn't available.
 
 ### OSC
 
-TODO: OSC sequences
+Supported OSCs (specified as the contents between the start and terminator) are:
+- `0;<message>`, which will either emit a kernel `L_WARN` log. In other applications, may change window title if applicable
+- `8;;link`, which may open a link in some application, if applicable. In the KOCOS virtual terminal, it does nothing
+- `Pnrrggbb`, where `n` is a hexadecimal digit and `rrggbb` is an RGB color in hexadecimal. Will change the 16 color palette's appropriate entry to that color.
 
 ## Terminal Input Sequences
 
@@ -135,6 +208,51 @@ Heavily based off ANSI, but not identical.
 Terminals may only use `char` if the charcode is a printable character, as defined in `/lib/keyboard.lua`'s `isTerminalPrintable`, and either there are no modifiers,
 or the only modifier is `Shift` and its an upper-case letter.
 
+Ctrl + D, for closing stdin, is byte `0x04`, and Ctrl + C, for sending a SIGINT, is `0x03`.
+The enter key emits a `\r` carriage return. Libraries which handle reading lines, such as `readline`,
+may instead drop it and emit a `\n`, but the virtual terminal itself emits `\r`.
+
+### Modifiers
+
+Modifiers, unlike ANSI, do not have `1` implicitly added to them. Instead,
+if they're 0, they're omitted.
+
+The following modifiers are applied to keys:
+- Shift = 1
+- Alt = 2
+- Control = 4
+- Meta = 8 (keyboard code `0`)
+
 ## The built-in virtual terminal
 
 KOCOS itself comes with a built-in virtual terminal implementation, backed by a simple GPU, screen and keyboard.
+
+### ioctl(fd, "terminfo")
+
+Doing an `ioctl` on a virtual terminal should return a table of the following
+```lua
+{
+    termname = "terminal name",
+    hw = {...}, -- list of addresses of associated components. If empty, it can be assumed to be a virtual terminal.
+    hw_features = { -- list of hardware-assisted features
+        "color", -- has colors. effectively, tier 2+ screen
+        "truecolor", -- has an extended palette. effectively, tier 3+ screen
+        "vrambuf", -- hardware-backed VRAM. If vrambuf is in term_features but not in hw_features, and the reported total VRAM is above 0, then the buffers are assumed to be emulated.
+    },
+    term_features = { -- supported sequences
+        "ansicolor", -- 4-bit color codes like CSI 30 m
+        "256color", -- 8-bit colors like CSI 38;5;0 m
+        "truecolor", -- 24-bit colors like CSI 38;2;0;0;0 m
+        "gpu", -- GPU (SGR) escapes
+        "vrambuf", -- VRAM (SGR) escapes
+    },
+    columns = ..., -- columns available (terminal width)
+    lines = ..., -- lines available (terminal height)
+    -- nil if this is the raw TTY, but if it is supervised by a shell, then this is the name of the shell.
+    -- Shells may wrap terminals to wrap them with line readers automatically,
+    -- or to extend the feature-set.
+    shellname = "shell name here",
+}
+```
+
+This can also be used to check if an fd is a tty

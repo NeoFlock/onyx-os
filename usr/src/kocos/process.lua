@@ -408,6 +408,9 @@ function load(chunk, chunkname, mode, env)
 	return rawload(chunk, chunkname, mode, env or process.current.namespace)
 end
 
+Kocos.printk(Kocos.L_DEBUG, "process system loaded")
+
+Kocos.printk(Kocos.L_DEBUG, "creating kernel process")
 process.current = process.create(coroutine.running(), _G, 0, 0)
 process.root = process.current
 

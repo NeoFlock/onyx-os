@@ -384,7 +384,7 @@ end
 
 Kocos.fs = fs
 
-Kocos.printk(Kocos.L_INFO, "filesystem subsystem loaded")
+Kocos.printk(Kocos.L_DEBUG, "filesystem subsystem loaded")
 
 Kocos.printk(Kocos.L_INFO, "registering default drivers")
 Kocos.addDriver(fs._defaultManagedFS)
@@ -401,5 +401,5 @@ else
 
 	fs.root = assert(fs.mount(dev), Kocos.errno.ENODRIVER)
 
-	Kocos.printk(Kocos.L_INFO, "mounted as managedfs true root")
+	Kocos.printk(Kocos.L_DEBUG, "mounted as managedfs true root")
 end

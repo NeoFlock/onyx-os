@@ -50,10 +50,12 @@ end)
 initProc.fds[1] = {
 	refc = 3,
 	opts = 0,
-	file = Kocos.fs.fd_from_rwf(Kocos.scr_read, function(_, data)
+	file = Kocos.fs.fd_from_rwf(function(_, len)
+		return Kocos.scr_read(len)
+	end, function(_, data)
 		Kocos.scr_write(data)
 		return true
-	end, nil),
+	end, nil, function(_, ...) return Kocos.scr_ioctl(...) end),
 }
 
 initProc.fds[0] = initProc.fds[1]

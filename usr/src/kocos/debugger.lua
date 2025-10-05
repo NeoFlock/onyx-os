@@ -1,5 +1,5 @@
 do
-	Kocos.printk(Kocos.L_INFO, "debugger subsystem loaded")
+	Kocos.printk(Kocos.L_DEBUG, "debugger subsystem loaded")
 
 	local event = Kocos.event
 
@@ -214,7 +214,7 @@ gc - Go, but only past the call. Still break on return. br will print the return
 
 	if kgdb then
 		local kgdbType = component.type(kgdb) or "unknown"
-		Kocos.printk(Kocos.L_INFO, "Using debugger: " .. kgdb .. " (" .. kgdbType .. ")")
+		Kocos.printk(Kocos.L_DEBUG, "Using debugger: " .. kgdb .. " (" .. kgdbType .. ")")
 		if kgdbType == "ocelot" then
 			event.listen(function(ev, hw, msg)
 				if ev == "ocelot_message" and hw == kgdb then
@@ -232,6 +232,6 @@ gc - Go, but only past the call. Still break on return. br will print the return
 
 		respond("debugger connection established")
 	else
-		Kocos.printk(Kocos.L_INFO, "No debugger selected")
+		Kocos.printk(Kocos.L_DEBUG, "No debugger selected")
 	end
 end
