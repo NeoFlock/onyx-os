@@ -21,6 +21,7 @@ local argv = {...}
 ---@field luaExecRT? string
 ---@field luaExecRTF? string
 ---@field hostname? string
+---@field permissiveCrashes? boolean
 
 ---@type Kocos.config
 Kocos.args = {}

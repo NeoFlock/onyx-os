@@ -225,6 +225,7 @@ function component._defaultHandler(ev, addr, type)
 end
 
 setmetatable(component, {__index = function(t, key)
+	if type(key) ~= "string" then return end
 	return component.getPrimary(key)
 end})
 

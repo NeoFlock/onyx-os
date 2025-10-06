@@ -40,9 +40,17 @@ process.npid = 0
 ---@field cwd string
 ---@field exitcode integer
 ---@field tracer? Kocos.process
+---@field daemon? string
 
 ---@type table<integer, Kocos.process>
 process.allProcs = {}
+
+---@class Kocos.process.daemon
+---@field proc Kocos.process
+---@field callback fun(cpid: integer, ...): ...
+
+---@type table<string, Kocos.process.daemon>
+process.daemons = {}
 
 function process.nextPid()
 	if Kocos.args.useExtremelySecurePidGeneration then
@@ -230,6 +238,11 @@ function process.close(proc)
 	proc.state = "dying" -- to prevent bad shit
 
 	process.raise(proc, process.SIGABRT)
+
+	if proc.daemon then
+		-- daemon is gone
+		process.daemons[proc.daemon] = nil
+	end
 
 	---@type Kocos.process[]
 	local allChildren = {}

@@ -67,12 +67,27 @@ initProc.fds[1] = {
 initProc.fds[0] = initProc.fds[1]
 initProc.fds[2] = initProc.fds[1]
 
+local function justDie()
+	pcall(computer.pullSignal, 2)
+	computer.shutdown(true)
+end
+
 while true do
 	local ok, err = xpcall(tick, debug.traceback)
 	if not ok then
-		if not pcall(Kocos.panickf, "Tick error: %s", err) then
+		local panic_ok = pcall(Kocos.panickf, "Tick error: %s\n", err)
+		if Kocos.args.permissiveCrashes then
+			if panic_ok then
+				-- eventually determine how bad the system is based
+				-- off the rate of panics
+			else
+				-- if panic handler also dies we might as well give up
+				justDie()
+			end
+		else
+			-- just die instantly
 			-- the state is so horrible its not worth preserving
-			computer.shutdown(true)
+			justDie()
 		end
 	end
 end

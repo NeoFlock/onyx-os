@@ -363,6 +363,46 @@ function syscalls.syscalls()
 	return s
 end
 
+---@param daemon string
+---@param callback fun(cpid: integer, ...): ...
+function syscalls.registerDaemon(daemon, callback)
+	local d = process.daemons[daemon]
+	if d then return nil, errno.EADDRINUSE end
+	process.daemons[daemon] = {
+		proc = process.current,
+		callback = callback,
+	}
+end
+
+---@param daemon string
+---@return integer?, string?
+function syscalls.getDaemonPid(daemon)
+	local d = process.daemons[daemon]
+	if not d then return nil, errno.ESRCH end
+	return d.proc.pid
+end
+
+---@return string[]
+function syscalls.listDaemons()
+	local daemons = {}
+	for addr in pairs(process.daemons) do
+		table.insert(daemons, addr)
+	end
+	return daemons
+end
+
+---@param daemon string
+---@return ...
+function syscalls.invokeDaemon(daemon, ...)
+	local d = process.daemons[daemon]
+	if not d then return nil, errno.ESRCH end
+	local t = {process.pcall(d.proc, d.callback, ...)}
+	if t[1] then
+		return table.unpack(t, 2)
+	end
+	return nil, table.unpack(t, 2)
+end
+
 Kocos.syscalls = syscalls
 
 ---@diagnostic disable: lowercase-global
