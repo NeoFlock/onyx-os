@@ -22,7 +22,8 @@ return function()
 			-- closing stdin
 			syscall("write", 0, "^D")
 			return
-		else
+		elseif #c > 0 then
+			-- TODO: ANSI escapes and stuff
 			buf = buf .. c
 			syscall("write", 1, c)
 		end

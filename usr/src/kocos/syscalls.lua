@@ -147,8 +147,10 @@ function syscalls.sleep(time)
 		return nil, errno.EINVAL
 	end
 
-	process.current.deadline = computer.uptime() + time
-	coroutine.yield()
+	local deadline = computer.uptime() + time
+	process.blockUntil(process.current, function()
+		return computer.uptime() >= deadline
+	end)
 	return true
 end
 
@@ -246,6 +248,7 @@ function syscalls.waitpid(pid)
 	process.blockUntil(process.current, function()
 		return not process.isRunning(proc)
 	end)
+	process.close(proc)
 	return proc.exitcode
 end
 
@@ -286,9 +289,12 @@ end
 ---@field os string
 ---@field bootAddress string
 ---@field rootAddress string
+---@field tmpAddress string
 ---@field hostname string
 ---@field memtotal integer
 ---@field memfree integer
+---@field kernelPID integer
+---@field initPID integer
 
 function syscalls.sysinfo()
 	---@type Kocos.sysinfoResult
@@ -296,20 +302,28 @@ function syscalls.sysinfo()
 		kernel = _KVERSION,
 		os = _OSVERSION,
 		bootAddress = computer.getBootAddress(),
+		rootAddress = Kocos.fs.root.dev.address,
+		tmpAddress = computer.tmpAddress(),
 		memfree = computer.freeMemory(),
 		memtotal = computer.totalMemory(),
-		rootAddress = Kocos.fs.root.dev.address,
 		hostname = Kocos.hostname,
+		kernelPID = process.root.pid,
+		initPID = process.init.pid,
 	}
 end
 
----@param addr string
+---@param addr? string
 function syscalls.chboot(addr)
-	if type(addr) ~= "string" then
-		return nil, errno.EINVAL
+	if addr then
+		if type(addr) ~= "string" then
+			return nil, errno.EINVAL
+		end
+		if process.current.euid ~= 0 then
+			return nil, errno.EPERM
+		end
+		computer.setBootAddress(addr)
 	end
-	computer.setBootAddress(addr)
-	return true
+	return computer.getBootAddress()
 end
 
 ---@param hostname string?

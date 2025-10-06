@@ -40,7 +40,6 @@ process.npid = 0
 ---@field cwd string
 ---@field exitcode integer
 ---@field tracer? Kocos.process
----@field deadline number
 
 ---@type table<integer, Kocos.process>
 process.allProcs = {}
@@ -86,7 +85,6 @@ function process.create(thread, namespace, uid, gid)
 		state = "running",
 		cwd = "/",
 		exitcode = 0,
-		deadline = 0,
 		blockUntil = {},
 	}
 
@@ -119,7 +117,6 @@ function process.fork(proc, func)
 	forked.cwd = proc.cwd
 	forked.exitcode = proc.exitcode
 	forked.tracer = proc.tracer
-	forked.deadline = proc.deadline
 	forked.parent = proc
 	proc.children[forked.pid] = forked
 	return forked
@@ -375,18 +372,38 @@ function process.isRunning(proc)
 end
 
 ---@param proc Kocos.process
+function process.isBlocked(proc)
+	while #proc.blockUntil > 0 do -- best feature in all of gaming
+		if proc.blockUntil[1]() then
+			-- holy shit we're free
+			table.remove(proc.blockUntil, 1)
+		else
+			-- darn
+			return true
+		end
+	end
+	return false
+end
+
+---@param proc Kocos.process
 ---@param condition Kocos.process.condition
 function process.blockUntil(proc, condition)
 	table.insert(proc.blockUntil, condition)
 	if proc.thread == coroutine.running() then
 		coroutine.yield()
+	elseif process.current.pid == proc.pid then
+		-- it seems as if we are in a signal handler or callback on another process' thread
+		-- this is like categorically awful situation, but we can still work with it
+		while process.isBlocked(proc) do
+			coroutine.yield()
+		end
 	end
 end
 
 ---@param proc Kocos.process
 function process.resume(proc)
 	if proc.stopped then return end
-	if proc.deadline > computer.uptime() then return end -- yeah, I've got time
+	if process.isBlocked(proc) then return end
 	while #proc.blockUntil > 0 do -- best feature in all of gaming
 		if proc.blockUntil[1]() then
 			-- holy shit we're free
