@@ -209,6 +209,23 @@ function syscalls.clist(filter, exact)
 	return t
 end
 
+---@param shortform string
+---@param filter? string
+---@param exact? boolean
+---@return string?, string?
+function syscalls.caddress(shortform, filter, exact)
+	if type(shortform) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	local l, err = syscalls.clist(filter, exact)
+	if err then return nil, err end
+	for addr in l do
+		if string.startswith(addr, shortform) then
+			return addr
+		end
+	end
+end
+
 function syscalls.cmethods(addr)
 	return component.methods(addr)
 end
@@ -311,6 +328,7 @@ function syscalls.sysinfo()
 		initPID = process.init.pid,
 	}
 end
+
 
 ---@param addr? string
 function syscalls.chboot(addr)
