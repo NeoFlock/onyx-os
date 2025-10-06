@@ -1,5 +1,10 @@
 Kocos.printkf(Kocos.L_INFO, "Booting %s...", _KVERSION)
 
+Kocos.printkf(Kocos.L_DEBUG, "Detecting hardware...")
+for addr, type in component.list() do
+	Kocos.printkf(Kocos.L_DEBUG, "%s %s", addr, type)
+end
+
 local freeMem = computer.freeMemory()
 local totalMem = computer.totalMemory()
 
@@ -46,6 +51,7 @@ local initProc = Kocos.process.fork(Kocos.process.root, function()
 	end
 	Kocos.panickf("COULD NOT FIND INIT PROGRAM!\nSearched: %s\n", table.concat(initPaths, "\n"))
 end)
+Kocos.process.init = initProc
 
 initProc.fds[1] = {
 	refc = 3,

@@ -20,6 +20,7 @@ local argv = {...}
 ---@field packageCPath? string
 ---@field luaExecRT? string
 ---@field luaExecRTF? string
+---@field hostname? string
 
 ---@type Kocos.config
 Kocos.args = {}
@@ -35,6 +36,7 @@ end
 
 Kocos.disableScreenLogging = false
 Kocos.disableDefaultPanicHandler = false
+Kocos.hostname = Kocos.args.hostname or "localhost"
 
 function Kocos.poweroff(reboot)
 	Kocos.event.notifyListeners("poweroff", reboot)

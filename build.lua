@@ -1,5 +1,14 @@
 #!/usr/bin/env lua
+---@diagnostic disable: lowercase-global
 -- Build script
+
+-- Stuff thrown in here so LSP will sybau
+if 1<0 then
+	---@param n integer
+	---@param v any
+	---@vararg type
+	function checkArg(n, v, ...) end
+end
 
 local toBuild = {
 	"onyx",
@@ -27,6 +36,7 @@ local buildInfo = {
 			"usr/src/kocos/bootstrap.lua",
 			"usr/src/kocos/utils.lua",
 			"usr/src/kocos/event.lua",
+			"usr/src/kocos/component.lua",
 			"usr/src/kocos/printk.lua",
 			"usr/src/kocos/errno.lua",
 			"usr/src/kocos/drivers.lua",

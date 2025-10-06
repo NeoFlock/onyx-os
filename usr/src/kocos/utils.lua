@@ -186,7 +186,7 @@ end
 -- Bin can be above 16 bytes.
 -- If bin is less than 16 bytes, it is padded with 0s
 ---@param bin string
-function BinToUUID_direct(bin)
+function string.binToGUID(bin)
     local digits4 = "0123456789abcdef"
 
     local base16d = ""
@@ -205,6 +205,12 @@ function BinToUUID_direct(bin)
         .. base16d:sub(21)
 
     return guid
+end
+
+function string.randomGUID()
+	local buf = ""
+	for _=1,16 do buf = buf .. string.char(math.random(0, 255)) end
+	return string.binToGUID(buf)
 end
 
 ---@param name string

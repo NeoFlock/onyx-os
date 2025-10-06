@@ -37,7 +37,7 @@ function Kocos._default_luaExec(ev, path, f, namespace)
 					Kocos.process.current.exitcode = 0
 				end
 			else
-				syscall("write", 2, exitcode)
+				syscall("write", 2, tostring(exitcode) .. "\n")
 				Kocos.process.current.exitcode = 1
 			end
 		end,

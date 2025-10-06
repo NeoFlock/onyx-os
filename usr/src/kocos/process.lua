@@ -15,6 +15,8 @@ process.npid = 0
 ---@field opts integer
 ---@field file? Kocos.fs.FileDescriptor
 
+---@alias Kocos.process.condition fun(): boolean
+
 ---@class Kocos.process
 ---@field state "running"|"dying"|"dead"|"finished"
 ---@field pid integer
@@ -25,6 +27,7 @@ process.npid = 0
 ---@field thread thread
 ---@field namespace _G
 ---@field args string[]
+---@field blockUntil Kocos.process.condition[]
 ---@field env table<string, string>
 ---@field modules table<string, Kocos.process.module>
 ---@field deps Kocos.process.sharedLib[]
@@ -84,6 +87,7 @@ function process.create(thread, namespace, uid, gid)
 		cwd = "/",
 		exitcode = 0,
 		deadline = 0,
+		blockUntil = {},
 	}
 
 
@@ -101,6 +105,7 @@ function process.fork(proc, func)
 	forked.egid = proc.egid
 	forked.args = table.copy(proc.args)
 	forked.env = table.copy(proc.env)
+	forked.blockUntil = table.copy(proc.blockUntil)
 	-- no table.copy cuz they're immutable anyways
 	forked.modules = proc.modules
 	forked.deps = proc.deps
@@ -331,12 +336,11 @@ function process.exec(proc, path, argv, env, namespace)
 			proc.modules = img.modules
 			proc.deps = {} -- TODO: deps
 			proc.signals = {} -- Signal handlers are ignored
-			-- TODO: setuid and setgid
 			---@type integer[]
 			local toClose = {}
 			for fd, res in pairs(proc.fds) do
 				-- TODO: check cloexec
-				if false then
+				if (res.opts & Kocos.fs.O_CLOEXEC) ~= 0 then
 					table.insert(toClose, fd)
 				end
 			end
@@ -371,9 +375,27 @@ function process.isRunning(proc)
 end
 
 ---@param proc Kocos.process
+---@param condition Kocos.process.condition
+function process.blockUntil(proc, condition)
+	table.insert(proc.blockUntil, condition)
+	if proc.thread == coroutine.running() then
+		coroutine.yield()
+	end
+end
+
+---@param proc Kocos.process
 function process.resume(proc)
 	if proc.stopped then return end
 	if proc.deadline > computer.uptime() then return end -- yeah, I've got time
+	while #proc.blockUntil > 0 do -- best feature in all of gaming
+		if proc.blockUntil[1]() then
+			-- holy shit we're free
+			table.remove(proc.blockUntil, 1)
+		else
+			-- darn
+			return
+		end
+	end
 	if coroutine.status(proc.thread) ~= "suspended" then return end
 	local old = process.current
 	process.current = proc

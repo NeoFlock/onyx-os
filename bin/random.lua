@@ -5,6 +5,6 @@ while true do
 	for _=1,4096 do
 		buf = buf .. string.char(math.random(0, 255))
 	end
-	syscall("write", 1, buf)
+	k.write(1, buf)
 	coroutine.yield()
 end

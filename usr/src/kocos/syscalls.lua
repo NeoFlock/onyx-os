@@ -1,7 +1,7 @@
 local process = Kocos.process
 local errno = Kocos.errno
 
----@type table<string, function>
+---@class Kocos.syscalls
 local syscalls = {}
 
 ---@param path string
@@ -189,11 +189,21 @@ function syscalls.readmod(module)
 	return nil, errno.ENOENT
 end
 
-function syscalls.clist()
+---@param filter? string
+---@param exact? boolean
+function syscalls.clist(filter, exact)
+	---@type table<string, string>
 	local t = {}
-	for addr, type in component.list() do
+	for addr, type in component.list(filter, exact) do
 		t[addr] = type
 	end
+	local k
+	setmetatable(t, {
+		__call = function()
+			k = next(t, k)
+			return k, t[k]
+		end,
+	})
 	return t
 end
 
@@ -205,10 +215,12 @@ function syscalls.cinvoke(addr, method, ...)
 	return component.methods(addr, method, ...)
 end
 
+---@return Kocos.device?
 function syscalls.cproxy(addr)
 	return component.proxy(addr)
 end
 
+---@return Kocos.device?
 function syscalls.cprimary(type)
 	return component.getPrimary(type)
 end
@@ -230,13 +242,31 @@ end
 function syscalls.waitpid(pid)
 	local proc = process.allProcs[pid]
 	if not proc then return 0 end
-	while true do
-		if not process.isRunning(proc) then
-			process.close(proc)
-			return proc.exitcode
-		end
-		coroutine.yield()
+	-- theoretically a signal can fuck us up however we do not care
+	process.blockUntil(process.current, function()
+		return not process.isRunning(proc)
+	end)
+	return proc.exitcode
+end
+
+---@param pid integer
+---@param condition Kocos.process.condition
+function syscalls.blockUntil(pid, condition)
+	local p = process.allProcs[pid]
+	if not p then return nil, errno.ESRCH end
+	if type(condition) ~= "function" then return nil, errno.EINVAL end
+
+	local cur = process.current
+	if cur.uid ~= 0 and not process.isDecendantOf(p, cur) then
+		return nil, errno.EPERM
 	end
+
+	process.blockUntil(p, function()
+		local ok, s = pcall(condition)
+		if not ok then return false end
+		return s
+	end)
+	return true
 end
 
 ---@param dir string
@@ -249,6 +279,56 @@ function syscalls.chdir(dir)
 	dir = process.resolve(process.current, dir)
 	process.current.cwd = dir
 	return dir
+end
+
+---@class Kocos.sysinfoResult
+---@field kernel string
+---@field os string
+---@field bootAddress string
+---@field rootAddress string
+---@field hostname string
+---@field memtotal integer
+---@field memfree integer
+
+function syscalls.sysinfo()
+	---@type Kocos.sysinfoResult
+	return {
+		kernel = _KVERSION,
+		os = _OSVERSION,
+		bootAddress = computer.getBootAddress(),
+		memfree = computer.freeMemory(),
+		memtotal = computer.totalMemory(),
+		rootAddress = Kocos.fs.root.dev.address,
+		hostname = Kocos.hostname,
+	}
+end
+
+---@param addr string
+function syscalls.chboot(addr)
+	if type(addr) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	computer.setBootAddress(addr)
+	return true
+end
+
+---@param hostname string?
+---@return string?, string?
+function syscalls.hostname(hostname)
+	if hostname then
+		if process.current.euid ~= 0 then
+			return nil, errno.EACCESS
+		end
+		Kocos.hostname = hostname
+	end
+	return Kocos.hostname
+end
+
+---@return string[]
+function syscalls.syscalls()
+	local s = {}
+	for k in pairs(syscalls) do table.insert(s, k) end
+	return s
 end
 
 Kocos.syscalls = syscalls
