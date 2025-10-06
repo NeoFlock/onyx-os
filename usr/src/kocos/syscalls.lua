@@ -372,6 +372,7 @@ function syscalls.registerDaemon(daemon, callback)
 		proc = process.current,
 		callback = callback,
 	}
+	return true
 end
 
 ---@param daemon string
@@ -396,7 +397,7 @@ end
 function syscalls.invokeDaemon(daemon, ...)
 	local d = process.daemons[daemon]
 	if not d then return nil, errno.ESRCH end
-	local t = {process.pcall(d.proc, d.callback, ...)}
+	local t = {process.pcall(d.proc, d.callback, process.current.pid, ...)}
 	if t[1] then
 		return table.unpack(t, 2)
 	end
