@@ -368,10 +368,14 @@ end
 function syscalls.registerDaemon(daemon, callback)
 	local d = process.daemons[daemon]
 	if d then return nil, errno.EADDRINUSE end
+	if process.current.daemon then
+		return nil, errno.EALREADY
+	end
 	process.daemons[daemon] = {
 		proc = process.current,
 		callback = callback,
 	}
+	process.current.daemon = daemon
 	return true
 end
 
