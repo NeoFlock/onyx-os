@@ -12,9 +12,6 @@ if not k then
 			rawset(t, sys, f)
 			return f
 		end,
-		__pairs = function()
-			return pairs(assert(syscall("syscalls")))
-		end,
 	})
 end
 

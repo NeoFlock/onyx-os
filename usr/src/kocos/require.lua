@@ -2,10 +2,13 @@
 
 local process = Kocos.process
 
+---@param modname string
+---@param uncached? boolean
+---@param env? _G
 ---@return any, string
-function require(modname, uncached)
+function require(modname, uncached, env)
 	--- Prob very temporary, will need to be tweaked later
-	local env = process.current.namespace
+	env = env or process.current.namespace
 
 	if env.package.loaded[modname] ~= nil and not uncached then
 		return env.package.loaded[modname], ':loaded:'
