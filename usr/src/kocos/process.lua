@@ -38,6 +38,7 @@ process.npid = 0
 ---@field parent? Kocos.process
 ---@field stopped boolean
 ---@field cwd string
+---@field exe? string
 ---@field exitcode integer
 ---@field tracer? Kocos.process
 ---@field daemon? string
@@ -126,6 +127,7 @@ function process.fork(proc, func)
 	forked.exitcode = proc.exitcode
 	forked.tracer = proc.tracer
 	forked.parent = proc
+	forked.exe = proc.exe
 	proc.children[forked.pid] = forked
 	return forked
 end

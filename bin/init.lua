@@ -127,6 +127,8 @@ for service, info in pairs(serviceInfo) do
 	end))
 end
 
+table.sort(cmds, function(a, b) return a.priority > b.priority end)
+
 -- Run commands
 Kocos.printkf(Kocos.L_INFO, "Running %d commands", #cmds)
 for _, cmd in ipairs(cmds) do

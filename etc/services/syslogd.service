@@ -1,6 +1,0 @@
-{
-	name="syslogd",
-	deps={},
-	exec="/bin/syslogd.lua",
-	addr="kernel",
-}

@@ -1,0 +1,6 @@
+{
+	name="sudod",
+	deps={},
+	exec="/bin/sudod.lua",
+	addr="system",
+}

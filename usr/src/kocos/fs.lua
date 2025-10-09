@@ -98,15 +98,17 @@ function fs.mount(dev)
 	end
 	for _, driver in ipairs(Kocos.drivers) do
 		local fsid, driverData = driver("FS-mount", dev)
-		fs.allMounts[mountID] = {
-			mountc = 1,
-			dev = dev,
-			submounts = {},
-			fsid = fsid,
-			driverData = driverData,
-			driver = driver,
-		}
-		return fs.allMounts[mountID]
+		if fsid then
+			fs.allMounts[mountID] = {
+				mountc = 1,
+				dev = dev,
+				submounts = {},
+				fsid = fsid,
+				driverData = driverData,
+				driver = driver,
+			}
+			return fs.allMounts[mountID]
+		end
 	end
 end
 
@@ -267,8 +269,25 @@ function fs.touch(path)
 	if not m.driver then
 		return nil, Kocos.errno.EHWPOISON
 	end
+	if fs.ftype(path) == fs.FTYPE_DIR then
+		return nil, Kocos.errno.EISDIR
+	end
 	-- still modifies mtime
 	return m.driver("FS-touch", m.driverData, p)
+end
+
+---@param path string
+---@return boolean?, string?
+function fs.mkdir(path)
+	local m, p = fs.resolve(path)
+	if not m.driver then
+		return nil, Kocos.errno.EHWPOISON
+	end
+	if fs.exists(path, true) then
+		return nil, Kocos.errno.EEXIST
+	end
+	-- still modifies mtime
+	return m.driver("FS-mkdir", m.driverData, p)
 end
 
 ---@param path string
@@ -357,6 +376,11 @@ function fs._defaultManagedFS(req, ...)
 		if not f then return false, err end
 		dev.close(f)
 		return true
+	end
+	if req == "FS-mkdir" then
+		---@type Kocos.device, string
+		local dev, path = ...
+		return dev.makeDirectory(path)
 	end
 	if req == "FS-openFile" then
 		---@type Kocos.device, string, string

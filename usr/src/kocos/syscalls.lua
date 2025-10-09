@@ -34,6 +34,44 @@ function syscalls.open(path, mode, opts)
 	return process.moveResource(process.current, res)
 end
 
+---@param path string
+---@return boolean?, string?
+function syscalls.mkdir(path)
+	if type(path) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	path = process.resolve(process.current, path)
+	return Kocos.fs.mkdir(path)
+end
+
+---@param path string
+---@param addr string
+---@return boolean?, string?
+function syscalls.mountDev(path, addr)
+	if process.current.euid ~= 0 then
+		return nil, errno.EPERM
+	end
+	if type(path) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	if type(addr) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	path = process.resolve(process.current, path)
+	if Kocos.fs.ftype(path) ~= Kocos.fs.FTYPE_DIR then
+		return nil, errno.ENOTDIR
+	end
+	local parentmnt, p = Kocos.fs.resolve(path)
+	local dev = component.proxy(addr)
+	if not dev then return nil, errno.ENODEV end
+	local mnt = Kocos.fs.mount(dev)
+	if not mnt then
+		return nil, errno.ENODRIVER
+	end
+	parentmnt.submounts[p] = mnt
+	return true
+end
+
 ---@param fd integer
 ---@param length integer
 ---@return string?, string?
@@ -224,6 +262,7 @@ function syscalls.caddress(shortform, filter, exact)
 			return addr
 		end
 	end
+	return nil, errno.ENODEV
 end
 
 function syscalls.cmethods(addr)
@@ -406,6 +445,86 @@ function syscalls.invokeDaemon(daemon, ...)
 		return table.unpack(t, 2)
 	end
 	return nil, table.unpack(t, 2)
+end
+
+---@return integer[]
+function syscalls.getprocs()
+	local pids = {}
+	for pid in pairs(process.allProcs) do
+		table.insert(pids, pid)
+	end
+	return pids
+end
+
+function syscalls.getpid()
+	return process.current.pid
+end
+
+---@class Kocos.process.info
+---@field argv? string[]
+---@field environ? table<string, string>
+---@field uid? integer
+---@field euid? integer
+---@field gid? integer
+---@field egid? integer
+---@field parent? integer
+---@field driver? boolean
+---@field daemon? string
+---@field tracer? integer
+---@field exitcode? integer
+---@field cwd? string
+---@field exe? string
+---@field namespace? _G
+---@field children? integer[]
+---@field signals? string[]
+
+---@param pid integer
+---@vararg "args"|"env"|"uid"|"gid"|"parent"|"tree"|"state"|"namespace"|"signals"
+---@return Kocos.process.info?, string?
+function syscalls.getprocinfo(pid, ...)
+	local proc = process.allProcs[pid]
+	if not proc then return nil, errno.ESRCH end
+	local isTrusted = process.current.euid == 0 or process.isDecendantOf(proc, process.current)
+	---@type Kocos.process.info
+	local info = {}
+	local vlen = select("#", ...)
+	for i=1, vlen do
+		local v = select(i, ...)
+		if v == "args" then
+			info.argv = table.copy(proc.args)
+		elseif v == "env" then
+			info.environ = table.copy(proc.env)
+		elseif v == "uid" then
+			info.uid = proc.uid
+			info.euid = proc.euid
+		elseif v == "gid" then
+			info.gid = proc.gid
+			info.egid = proc.egid
+		elseif v == "parent" then
+			if proc.parent then info.parent = proc.parent.pid end
+		elseif v == "tree" then
+			if proc.parent then info.parent = proc.parent.pid end
+			info.children = {}
+			for cpid in pairs(proc.children) do
+				table.insert(info.children, cpid)
+			end
+		elseif v == "state" then
+			if proc.parent then info.parent = proc.parent.pid end
+			if proc.tracer then info.tracer = proc.tracer.pid end
+			info.driver = not not proc.driver
+			info.exitcode = proc.exitcode
+			info.exe = proc.exe
+			info.cwd = proc.cwd
+		elseif v == "namespace" then
+			if isTrusted then info.namespace = proc.namespace end
+		elseif v == "signals" then
+			info.signals = {}
+			for sig in pairs(proc.signals) do
+				table.insert(info.signals, sig)
+			end
+		end
+	end
+	return info
 end
 
 Kocos.syscalls = syscalls
