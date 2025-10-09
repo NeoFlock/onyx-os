@@ -11,7 +11,10 @@ Kocos.event.timers = {}
 
 function Kocos.event.notifyListeners(...)
 	for _, func in ipairs(Kocos.event.listeners) do
-		func(...)
+		local ok, err = xpcall(func, debug.traceback, ...)
+		if not ok then
+			Kocos.printkf(Kocos.L_ERROR, "Signal handler error: %s", err)
+		end
 	end
 end
 

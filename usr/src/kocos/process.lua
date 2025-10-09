@@ -2,6 +2,16 @@ local process = {}
 
 process.npid = 0
 
+-- File descriptors / resources with special meanings
+--- The standard input stream
+process.STDIN = 0
+--- The standard output stream
+process.STDOUT = 1
+--- The standard error stream
+process.STDERR = 2
+--- The standard terminal stream
+process.STDTERM = 3
+
 ---@class Kocos.process.module
 ---@field data string
 ---@field src string
@@ -337,6 +347,7 @@ function process.exec(proc, path, argv, env, namespace)
 		if img then
 			Kocos.fs.close(f)
 			-- if this is nil and err2 is also nil, means driver ignored it
+			proc.exe = path
 			proc.args = argv
 			proc.env = env
 			proc.namespace = namespace
@@ -441,6 +452,11 @@ function process.resume(proc)
 			process.raise(proc.parent, process.SIGCHLD, proc.pid)
 		end
 	end
+end
+
+---@param proc Kocos.process
+function process.isRoot(proc)
+	return proc.uid == 0 or proc.euid == 0
 end
 
 function process.run()

@@ -2,6 +2,10 @@
 
 assert(Kocos, "not running in kernel address space")
 
+local kBootTime = k.uptime()
+local cmdTime = kBootTime
+local lastCmdTime = kBootTime
+Kocos.printkf(Kocos.L_INFO, "Reached init in %s", string.boottimefmt(kBootTime))
 print("Welcome to \x1b[38;5;2m" .. _OSVERSION .. "\x1b[0m")
 
 ---@type table<string, _G>
@@ -32,7 +36,6 @@ local addrs = {
 ---@field args string[]
 ---@field env table<string, string>
 ---@field addr string
----@field waitFor string[]
 
 ---@type table<string, onyx.init.service>
 local serviceInfo = {}
@@ -87,7 +90,6 @@ for _, file in ipairs(commandFiles) do
 	info.priority = info.priority or 100
 	info.args = info.args or {}
 	info.env = info.env or {}
-	info.waitFor = info.waitFor or {}
 	info.cwd = info.cwd or "/home"
 	info.addr = info.addr or "user"
 	table.insert(cmds, info)
@@ -96,6 +98,15 @@ end
 ---@param action string
 k.registerDaemon("initd", function(cpid, action, ...)
 	if type(action) ~= "string" then return nil, "bad request" end
+
+	if action == "timings" then
+		return {
+			bios = Kocos.biosBootTime,
+			kernel = kBootTime,
+			allServices = cmdTime,
+			currentCommand = lastCmdTime,
+		}
+	end
 
 	if action == "waitFor" then
 		local services = {...}
@@ -111,6 +122,7 @@ k.registerDaemon("initd", function(cpid, action, ...)
 	if action == "markComplete" then
 		local service = serviceFromPids[cpid]
 		if not service then return nil, "not a service" end
+		Kocos.printkf(Kocos.L_INFO, "%s completed", service)
 		servicesLoaded[service] = true
 		return true
 	end
@@ -118,14 +130,23 @@ end)
 
 -- Launch services
 Kocos.printkf(Kocos.L_INFO, "Launching %d services", #serviceFiles)
+local allServices = {}
 for service, info in pairs(serviceInfo) do
 	Kocos.printkf(Kocos.L_INFO, "Launching %s", service)
-	assert(k.fork(function()
+	table.insert(allServices, service)
+	local pid = assert(k.fork(function()
 		assert(k.chdir(info.cwd))
 		assert(k.invokeDaemon("initd", "waitFor", table.unpack(info.deps)))
 		assert(k.exec(info.exec, info.args, info.env, addrs[info.addr]))
 	end))
+	serviceFromPids[pid] = service
 end
+
+Kocos.printkf(Kocos.L_INFO, "Waiting for %d services", #serviceFiles)
+k.invokeDaemon("initd", "waitFor", table.unpack(allServices))
+
+cmdTime = k.uptime()
+Kocos.printkf(Kocos.L_INFO, "Finished services in %s (%s total)", string.boottimefmt(cmdTime - kBootTime), string.boottimefmt(cmdTime))
 
 table.sort(cmds, function(a, b) return a.priority > b.priority end)
 
@@ -133,12 +154,12 @@ table.sort(cmds, function(a, b) return a.priority > b.priority end)
 Kocos.printkf(Kocos.L_INFO, "Running %d commands", #cmds)
 for _, cmd in ipairs(cmds) do
 	Kocos.printkf(Kocos.L_INFO, "Running %s", cmd.name)
+	lastCmdTime = k.uptime()
 	local child = assert(k.fork(function()
 		assert(k.chdir(cmd.cwd))
-		assert(k.invokeDaemon("initd", "waitFor", table.unpack(cmd.waitFor)))
 		assert(k.exec(cmd.exec, cmd.args, cmd.env, addrs[cmd.addr]))
 	end))
 	assert(k.waitpid(child))
 end
 
-table.sort(cmds, function(a, b) return a.priority > b.priority end)
+Kocos.printkf(Kocos.L_INFO, "All commands have finished")

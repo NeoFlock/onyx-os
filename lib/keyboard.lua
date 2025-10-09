@@ -1,6 +1,8 @@
 local keyboard = {}
 
 keyboard.keys = {}
+-- Added from observation with ocelot
+keyboard.keys.escape           = 0x01
 
 -- Shamelessly robbed from https://github.com/MightyPirates/OpenComputers/blob/master-MC1.7.10/src/main/resources/assets/opencomputers/loot/openos/lib/core/full_keyboard.lua
 keyboard.keys["1"]           = 0x02
@@ -161,6 +163,9 @@ function keyboard.charToCode(n)
         ["\n"] = "enter",
         ["\r"] = "enter",
         ["\b"] = "back",
+        ["\x1b"] = "escape",
+		["\x03"] = "c",
+		["\x04"] = "d",
     }
     c = map[c] or c
     return keyboard.keys[c] or 0

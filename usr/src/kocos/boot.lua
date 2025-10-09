@@ -15,7 +15,15 @@ if freeMem < 64*1024 then
 end
 
 local function tick()
-	Kocos.event.pull()
+	local interval = Kocos.args.pollInterval or 0
+	local percent = computer.energy() / computer.maxEnergy()
+	if percent < 0.5 then
+		interval = Kocos.args.midBatteryPollInterval or 0.1 -- idle longer to save battery
+	end
+	if percent < 0.1 then
+		interval = Kocos.args.midBatteryPollInterval or 0.2 -- idle way longer to save battery
+	end
+	Kocos.event.pull(interval)
 	Kocos.process.run()
 end
 
@@ -54,7 +62,7 @@ end)
 Kocos.process.init = initProc
 
 initProc.fds[1] = {
-	refc = 3,
+	refc = 4,
 	opts = 0,
 	file = Kocos.fs.fd_from_rwf(function(_, len)
 		return Kocos.scr_read(len)
@@ -66,6 +74,7 @@ initProc.fds[1] = {
 
 initProc.fds[0] = initProc.fds[1]
 initProc.fds[2] = initProc.fds[1]
+initProc.fds[3] = initProc.fds[1]
 
 local function justDie()
 	pcall(computer.pullSignal, 2)

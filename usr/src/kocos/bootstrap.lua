@@ -14,6 +14,10 @@ local argv = {...}
 ---@field noOcelotLog? boolean
 ---@field minLog? integer
 ---@field pollInterval? number
+--- For when <50% battery
+---@field midBatteryPollInterval? number
+--- For when <10% battery
+---@field lowBatteryPollInterval? number
 ---@field minEventPoll? number
 ---@field useExtremelySecurePidGeneration? boolean
 ---@field packagePath? string
@@ -22,6 +26,8 @@ local argv = {...}
 ---@field luaExecRTF? string
 ---@field hostname? string
 ---@field permissiveCrashes? boolean
+
+Kocos.biosBootTime = computer.uptime()
 
 ---@type Kocos.config
 Kocos.args = {}
@@ -35,6 +41,7 @@ else
 	error("Unknown boot protocol! This is catastrophic")
 end
 
+Kocos.disableScreen = false
 Kocos.disableScreenLogging = false
 Kocos.disableDefaultPanicHandler = false
 Kocos.hostname = Kocos.args.hostname or "localhost"

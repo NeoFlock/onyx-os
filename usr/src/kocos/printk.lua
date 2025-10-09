@@ -58,6 +58,53 @@ if gpu and screen then
 		return r * 0x10000 + g * 0x100 + b
 	end
 
+	---@type integer?
+	local blinkTimer = nil
+	local lightOn = false
+
+	local function swapColors()
+		local fg = component.invoke(gpu, "getForeground")
+		local bg = component.invoke(gpu, "getBackground")
+		component.invoke(gpu, "setForeground", bg)
+		component.invoke(gpu, "setBackground", fg)
+	end
+
+	local function showCursor()
+		if lightOn then return end
+		lightOn = true
+		swapColors()
+		component.invoke(gpu, "set", x, y, " ")
+	end
+
+	local function hideCursor()
+		if not lightOn then return end
+		lightOn = false
+		swapColors()
+		component.invoke(gpu, "set", x, y, " ")
+	end
+
+	local function toggleCursor()
+		if lightOn then
+			hideCursor()
+		else
+			showCursor()
+		end
+	end
+
+	local function disableBlink()
+		if not blinkTimer then return end
+		Kocos.event.cancel(blinkTimer)
+		blinkTimer = nil
+	end
+
+	local function enableBlink()
+		if blinkTimer then return end
+		blinkTimer = Kocos.event.timer(0.5, function()
+			if Kocos.disableScreen then disableBlink() end
+			toggleCursor()
+		end, math.huge)
+	end
+
 	local stdClrs = {
 		-- taken from https://en.wikipedia.org/wiki/ANSI_escape_code#Control_Sequence_Introducer_commands
 		-- Mix of VS Code and VGA.
@@ -235,10 +282,7 @@ if gpu and screen then
 					component.invoke(gpu, "setForeground", 0xFFFFFF)
 					component.invoke(gpu, "setBackground", 0x000000)
 				elseif op == 7 then
-					local fg = component.invoke(gpu, "getForeground")
-					local bg = component.invoke(gpu, "getBackground")
-					component.invoke(gpu, "setForeground", bg)
-					component.invoke(gpu, "setBackground", fg)
+					swapColors()
 				elseif op == 8 then
 					-- TODO: conceal
 				elseif op == 28 then
@@ -305,7 +349,7 @@ if gpu and screen then
 		end
 		if action == "h" then
 			if params == "?25" then
-				-- TODO: cursor blink
+				enableBlink()
 				return
 			end
 			if params == "?1004" then
@@ -320,7 +364,7 @@ if gpu and screen then
 		end
 		if action == "l" then
 			if params == "?25" then
-				-- TODO: cursor blink
+				disableBlink()
 				return
 			end
 			if params == "?1004" then
@@ -449,6 +493,8 @@ if gpu and screen then
 	end
 
 	function Kocos.scr_write(text)
+		if Kocos.disableScreen then return end
+		hideCursor()
 		for i=1,unicode.len(text) do
 			putc(unicode.sub(text, i, i))
 		end
@@ -464,6 +510,7 @@ if gpu and screen then
 	local keysHeld = {}
 
 	function Kocos._scr_reader(ev, kbAddr, chr, cod)
+		if Kocos.disableScreen then return end
 		if kbAddr ~= keyboard then return end
 		local mods = 0
 		if keysHeld[0x2A] or keysHeld[0x36] then
@@ -515,6 +562,7 @@ if gpu and screen then
 	---@param len integer
 	---@return string?
 	function Kocos.scr_read(len)
+		if Kocos.disableScreen then return end
 		len = math.min(len, #keybuf)
 		local oldbuf = keybuf:sub(1, len)
 		keybuf = keybuf:sub(len+1)

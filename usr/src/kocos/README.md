@@ -143,7 +143,7 @@ from the cursor to the start of the screen. if n is `2`, it clears the entire sc
 - `CSI 8 n` - Like DSR, except n is the maximum amount of colums supported and m is the maximum amount of rows supported
 - `CSI 5 i` - Enable AUX port. The aux port may be an associated output device.
 - `CSI 4 i` - Disable AUX port.
-- `CSI ?25 h` - Shows the cursor. The cursor may blink, but it will certainly move. Currently does nothing in the KOCOS virtual terminal.
+- `CSI ?25 h` - Shows the cursor. The cursor may blink, but it will certainly move.
 - `CSI ?25 l` - Hides the cursor.
 - `CSI ?1004 h` - Enables focus reporting. The terminal will output `CSI I` when entering focus and `CSI O` when exiting focus.
 - `CSI ?1004 l` - Disables focus reporting.
@@ -203,6 +203,12 @@ Heavily based off ANSI, but not identical.
 <esc>[<charcode>;<keycode>(;<modifier>)~ - Effectively a key_down event
 <esc>[<charcode>;<keycode>(;<modifier>)^ - Effectively a key_up event. Rarely enabled.
 <esc>[<size in bytes>|<contents> - Effectively a clipboard event
+<esc>[1;x;yM - Effectively a screen_resized event, however SIGWINCH is preferred
+<esc>[2;x;y;bM - A touch event, with x, y as position and b as the button
+<esc>[3;x;y;bM - A drag event
+<esc>[4;x;y;bM - A drop event
+<esc>[5;x;y;dM - A scroll event, with x, y as position and d as the direction, where positive usually means up
+<esc>[6;x;yM - A walk event, rarely useful
 ```
 
 Terminals may only use `char` if the charcode is a printable character, as defined in `/lib/keyboard.lua`'s `isTerminalPrintable`, and either there are no modifiers,

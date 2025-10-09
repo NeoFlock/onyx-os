@@ -1,3 +1,4 @@
+---@diagnostic disable: lowercase-global
 function table.copy(t)
 	if type(t) == "table" then
 		local nt = {}
@@ -45,6 +46,10 @@ local luaglobals = {
 	"syscall",
 	"require",
 	"package",
+	"writefile",
+	"readfile",
+	"loadfile",
+	"dofile",
 }
 
 ---@param src? _G
@@ -129,7 +134,7 @@ function string.split(inputstr, sep)
     sep = "%s"
   end
   local t = {}
-  for str in string.gmatch(inputstr, "([^"..sep.."]+)") do
+  for str in string.gmatch(inputstr, "([^"..sep.."]*)") do
     table.insert(t, str)
   end
   return t
@@ -213,6 +218,24 @@ function string.randomGUID()
 	return string.binToGUID(buf)
 end
 
+---@param t number
+function string.uptimefmt(t)
+	local hours = math.floor(t / 3600)
+	local mins = math.floor(t / 60) % 60
+	local secs = t % 60
+
+	return string.format("%02d:%02d:%02.3f", hours, mins, secs)
+end
+
+---@param t number
+function string.boottimefmt(t)
+	local hours = math.floor(t / 3600)
+	local mins = math.floor(t / 60) % 60
+	local secs = t % 60
+
+	return string.format("%02dh%02dm%02.3fs", hours, mins, secs)
+end
+
 ---@param name string
 ---@param path string
 ---@param sep? string
@@ -241,12 +264,20 @@ function dofile(filename, ...)
 end
 
 function loadfile(filename, mode, env)
+	local code, err = readfile(filename)
+	if not code then return nil, err end
+	return load(code, "=" .. filename, mode, env)
+end
+
+---@param bufsize? integer
+---@return string?, string?
+function readfile(filename, bufsize)
 	local fd, err = syscall("open", filename, "r")
 	if err then return nil, err end
 
 	local code = ""
 	while true do
-		local data, err2 = syscall("read", fd, math.huge)
+		local data, err2 = syscall("read", fd, bufsize or math.huge)
 		if err2 then
 			syscall("close", fd)
 			return nil, err2
@@ -257,6 +288,21 @@ function loadfile(filename, mode, env)
 	end
 
 	syscall("close", fd)
+	return code
+end
 
-	return load(code, "=" .. filename, mode, env)
+---@param data string
+---@return boolean?, string?
+function writefile(filename, data)
+	local fd, err = syscall("open", filename, "r")
+	if err then return nil, err end
+
+	local ok, err2 = syscall("write", fd, data)
+	if not ok then
+		syscall("close", fd)
+		return nil, err2
+	end
+
+	syscall("close", fd)
+	return true
 end

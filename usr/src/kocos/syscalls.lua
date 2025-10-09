@@ -48,9 +48,6 @@ end
 ---@param addr string
 ---@return boolean?, string?
 function syscalls.mountDev(path, addr)
-	if process.current.euid ~= 0 then
-		return nil, errno.EPERM
-	end
 	if type(path) ~= "string" then
 		return nil, errno.EINVAL
 	end
@@ -70,6 +67,30 @@ function syscalls.mountDev(path, addr)
 	end
 	parentmnt.submounts[p] = mnt
 	return true
+end
+
+--- Returns a map of paths obtained from depth-first search to device addresses
+function syscalls.getMounts()
+	---@type table<string, string>
+	local t = {}
+
+	---@type string[]
+	local queue = {"/"}
+
+	while true do
+		local p = table.remove(queue, 1)
+		if not p then break end
+
+		local dev = Kocos.fs.resolve(p)
+		if not t[dev.dev.address] then
+			t[dev.dev.address] = p
+			for mp in pairs(dev.submounts) do
+				table.insert(queue, Kocos.fs.join(p, mp))
+			end
+		end
+	end
+
+	return t
 end
 
 ---@param fd integer
@@ -167,7 +188,9 @@ end
 ---@param f function
 ---@return integer Returns pid of new process
 function syscalls.fork(f)
-	return process.fork(process.current, f).pid
+	local pid = process.fork(process.current, f).pid
+	coroutine.yield() -- give child a chance to shine
+	return pid
 end
 
 function syscalls.environ()
@@ -190,6 +213,11 @@ function syscalls.sleep(time)
 		return computer.uptime() >= deadline
 	end)
 	return true
+end
+
+---@return number
+function syscalls.uptime()
+	return computer.uptime()
 end
 
 ---@param path string
@@ -295,6 +323,10 @@ function syscalls.cslot(addr)
 	return component.slot(addr)
 end
 
+function syscalls.ctype(addr)
+	return component.type(addr)
+end
+
 ---@param pid integer
 ---@return integer
 function syscalls.waitpid(pid)
@@ -351,6 +383,8 @@ end
 ---@field memfree integer
 ---@field kernelPID integer
 ---@field initPID integer
+---@field energy number
+---@field maxEnergy number
 
 function syscalls.sysinfo()
 	---@type Kocos.sysinfoResult
@@ -365,6 +399,8 @@ function syscalls.sysinfo()
 		hostname = Kocos.hostname,
 		kernelPID = process.root.pid,
 		initPID = process.init.pid,
+		energy = computer.energy(),
+		maxEnergy = computer.maxEnergy(),
 	}
 end
 
@@ -458,6 +494,92 @@ end
 
 function syscalls.getpid()
 	return process.current.pid
+end
+
+function syscalls.getuid()
+	return process.current.uid
+end
+
+function syscalls.getgid()
+	return process.current.gid
+end
+
+function syscalls.geteuid()
+	return process.current.euid
+end
+
+function syscalls.getegid()
+	return process.current.egid
+end
+
+---@param uid integer
+---@param pid? integer
+---@return boolean, string?
+function syscalls.setuid(uid, pid)
+	local cur = process.current
+	local target = process.allProcs[pid or cur.pid]
+	if not target then return false, errno.ESRCH end
+	if not process.isDecendantOf(target, cur) then
+		return false, errno.EPERM
+	end
+	if uid == 0 and not process.isRoot(cur) then
+		return false, errno.EPERM
+	end
+	target.uid = uid
+	return true
+end
+
+---@param gid integer
+---@param pid? integer
+---@return boolean, string?
+function syscalls.setgid(gid, pid)
+	local cur = process.current
+	local target = process.allProcs[pid or cur.pid]
+	if not target then return false, errno.ESRCH end
+	if not process.isDecendantOf(target, cur) then
+		return false, errno.EPERM
+	end
+	if gid == 0 and not process.isRoot(cur) then
+		return false, errno.EPERM
+	end
+	target.gid = gid
+	return true
+end
+
+---@param uid integer
+---@param pid? integer
+---@return boolean, string?
+function syscalls.seteuid(uid, pid)
+	local cur = process.current
+	local target = process.allProcs[pid or cur.pid]
+	if not target then return false, errno.ESRCH end
+	if not process.isDecendantOf(target, cur) then
+		return false, errno.EPERM
+	end
+	if uid == 0 then
+		target.euid = target.uid
+		return true
+	end
+	target.euid = uid
+	return true
+end
+
+---@param gid integer
+---@param pid? integer
+---@return boolean, string?
+function syscalls.setegid(gid, pid)
+	local cur = process.current
+	local target = process.allProcs[pid or cur.pid]
+	if not target then return false, errno.ESRCH end
+	if not process.isDecendantOf(target, cur) then
+		return false, errno.EPERM
+	end
+	if gid == 0 then
+		target.egid = target.gid
+		return true
+	end
+	target.egid = gid
+	return true
 end
 
 ---@class Kocos.process.info

@@ -28,7 +28,7 @@ fs.F_SETFD = "setfd"
 
 -- This one is triggered BEFORE the finalizer is called, thus the resource is still usable in the listener.
 fs.EV_CLOSED = "closed"
--- As extra arguments: a string, containing the data
+-- As extra arguments: an integer, containing the length of the data that can be read without blocking
 fs.EV_DATAREADY = "data-ready"
 -- As extra argumnets: a boolean, indicating success, an an optional string, indicating error if applicable
 fs.EV_WRITEDONE = "write-done"
@@ -68,10 +68,11 @@ end
 
 ---@class Kocos.fs.partition: Kocos.fs.vdrive
 ---@field type "partition"
----@field device Kocos.device
----@field partType Kocos.fs.partitionType
----@field offset integer
----@field size integer
+---@field getDevice fun(): Kocos.device
+---@field getDeviceAddress fun(): Kocos.device
+---@field getPartitionType fun(): Kocos.fs.partitionType
+---@field getOffset fun(): integer
+---@field isReadonly fun(): boolean
 
 ---@class Kocos.fs.mountpoint
 ---@field mountc integer
