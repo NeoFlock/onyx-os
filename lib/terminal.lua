@@ -5,6 +5,7 @@ local keyboard = require("keyboard")
 
 ---@class terminal
 ---@field fd integer
+---@field ofd integer
 ---@field buf? string
 ---@field clipboardBuf? string
 ---@field clipboardSize integer
@@ -12,9 +13,23 @@ local keyboard = require("keyboard")
 local terminal = {}
 terminal.__index = terminal
 
+terminal.STDIN = 0
+terminal.STDOUT = 1
+terminal.STDERR = 2
+terminal.STDTERM = 3
+
+function terminal.stdio()
+	return terminal.wrap(terminal.STDIN, terminal.STDOUT)
+end
+
+function terminal.stdterm()
+	return terminal.wrap(terminal.STDTERM)
+end
+
 ---@param fd integer
-function terminal.wrap(fd)
-	return setmetatable({fd=fd, events={}, clipboardSize = 0}, terminal)
+---@param ofd? integer
+function terminal.wrap(fd, ofd)
+	return setmetatable({fd=fd, ofd=ofd or fd, events={}, clipboardSize = 0}, terminal)
 end
 
 --- Internal function. Push an event
@@ -52,8 +67,7 @@ function terminal:runCSI(data, action)
 		return
 	end
 	if action == "R" then
-		local parts = string.split(data, ";")
-		self:push("term_response", tonumber(parts[1]), tonumber(parts[2]))
+		self:push("term_response", data)
 		return
 	end
 	if action == "M" then
@@ -100,6 +114,9 @@ function terminal:processC(c)
 	if c == '\x1b' then
 		self.buf = ""
 		return
+	elseif c == "\x03" then
+		self:push("interrupted")
+		return
 	else
 		self:push("key_down", _term, c:byte(), keyboard.charToCode(c:byte()), 0)
 		return
@@ -123,12 +140,199 @@ end
 --- The screen and keyboard events have almost identical mappings, with the
 --- addresses being set to :terminal:, and player name to :user: for screen events, and the modifier integer for keyboard events,
 --- Responses raise a term_response event instead.
----@return string, ...
+---@return string?, ...
 function terminal:pull()
 	local t = table.remove(self.events, 1)
 	if t then
 		return table.unpack(t)
 	end
+end
+
+function terminal:write(...)
+	local s = table.concat({...}, "")
+	assert(k.write(self.ofd, s))
+end
+
+terminal.ESC = "\x1b"
+terminal.CSI = "\x1b["
+terminal.OSC = "\x1b]"
+terminal.ST = "\x1b\\"
+terminal.BELL = "\a"
+
+function terminal:writeCSI(action, ...)
+	self:write(terminal.CSI, table.concat({...}, ";"), action)
+end
+
+function terminal:writeOSC(cmd)
+	self:write(terminal.OSC, cmd, terminal.BELL)
+end
+
+---@param passInterrupt? boolean
+---@return string?, ...
+function terminal:pullUntilEvent(passInterrupt)
+	while true do
+		local t = {self:pull()}
+		if t[1] then
+			if t[1] == "interrupted" and not passInterrupt then
+				error("interrupted", 2)
+			end
+			return table.unpack(t)
+		else
+			coroutine.yield()
+			self:process()
+		end
+	end
+end
+
+function terminal:dropEvents()
+	self.events = {}
+end
+
+function terminal:showCursor()
+	self:write(terminal.CSI, "?25h")
+end
+
+function terminal:hideCursor()
+	self:write(terminal.CSI, "?25l")
+end
+
+---@return string
+function terminal:blockUntilResponse()
+	while true do
+		local ev, resp = self:pullUntilEvent()
+		if ev == "term_response" then
+			return resp
+		end
+	end
+end
+
+---@return integer, integer
+function terminal:blockUntilDSR()
+	local resp = self:blockUntilResponse()
+	local nums = string.split(resp, ";")
+	return tonumber(nums[1]) or 0, tonumber(nums[2]) or 0
+end
+
+function terminal:getCursor()
+	self:write(terminal.CSI, "6n")
+	return self:blockUntilDSR()
+end
+
+---@param x integer
+---@param y integer
+function terminal:setCursor(x, y)
+	self:write(terminal.CSI, x, ";", y, "H")
+end
+
+function terminal:clearScreenAfterCursor()
+	self:write(terminal.CSI, "0J")
+end
+
+function terminal:clearScreenBeforeCursor()
+	self:write(terminal.CSI, "1J")
+end
+
+function terminal:clearScreen()
+	self:write(terminal.CSI, "2J")
+end
+
+function terminal:clearLineAfterCursor()
+	self:write(terminal.CSI, "0K")
+end
+
+function terminal:clearLineBeforeCursor()
+	self:write(terminal.CSI, "1K")
+end
+
+function terminal:clearLine()
+	self:write(terminal.CSI, "2K")
+end
+
+function terminal:clearAndReset()
+	self:clearScreen()
+	self:setCursor(1, 1)
+	self:disableFocusReporting()
+	self:disableKeyUp()
+	self:disableAuxPort()
+	self:write(terminal.CSI, "0m")
+end
+
+function terminal:enableFocusReporting()
+	self:write(terminal.CSI, "?1004h")
+end
+
+function terminal:disableFocusReporting()
+	self:write(terminal.CSI, "?1004l")
+end
+
+function terminal:enableKeyUp()
+	self:write(terminal.CSI, "?2004h")
+end
+
+function terminal:disableKeyUp()
+	self:write(terminal.CSI, "?2004l")
+end
+
+function terminal:enableAuxPort()
+	self:write(terminal.CSI, "5i")
+end
+
+function terminal:disableAuxPort()
+	self:write(terminal.CSI, "4i")
+end
+
+---@param amountUp integer
+function terminal:scroll(amountUp)
+	if amountUp == 0 then return end
+	self:write(terminal.CSI, math.abs(amountUp), amountUp > 0 and "S" or "T")
+end
+
+function terminal:getResolution()
+	self:write(terminal.CSI, "7n")
+	return self:blockUntilDSR()
+end
+
+function terminal:maxResolution()
+	self:write(terminal.CSI, "8n")
+	return self:blockUntilDSR()
+end
+
+---@param w integer
+---@param h integer
+function terminal:setResolution(w, h)
+	self:write(terminal.CSI, "3;", w, ";", h, "U")
+end
+
+function terminal:beep()
+	self:write(terminal.BELL)
+end
+
+---@return integer, integer
+function terminal:requestVRAM()
+	self:write(terminal.CSI, "1v")
+	return self:blockUntilDSR()
+end
+
+function terminal:freeMemory()
+	local free = self:requestVRAM()
+	return free
+end
+
+function terminal:totalMemory()
+	local _, total = self:requestVRAM()
+	return total
+end
+
+function terminal:hasVRAM()
+	return self:totalMemory() > 0
+end
+
+function terminal:saveCursor()
+	self:write(terminal.ESC, "7")
+end
+
+function terminal:restoreCursor()
+	self:write(terminal.ESC, "8")
 end
 
 return terminal

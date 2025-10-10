@@ -4,6 +4,7 @@
 
 local userdb = require("userdb")
 local readline = require("readline")
+local shutils = require("shutils")
 
 local users = assert(userdb.parsePasswd())
 
@@ -18,20 +19,13 @@ local function getugids(name)
 end
 
 ---@param name string
----@param pass string
----@return boolean
-local function checkpass(name, pass)
-	return true -- yup, approved, no questions asked
-end
-
----@param name string
 ---@return boolean
 local function tryLogin(name)
-	if not checkpass(name, "") then
+	if not userdb.checkpass(name, "", users) then
 		k.write(1, "password: ")
 		local pass = readline(nil, nil, "")
 		if not pass then return false end
-		if not checkpass(name, pass:sub(1, -2)) then return false end
+		if not userdb.checkpass(name, pass:sub(1, -2), users) then return false end
 	end
 	local uinfo = getugids(name)
 	if not uinfo then return false end
@@ -44,6 +38,9 @@ local function tryLogin(name)
 		local environ = table.copy(assert(k.environ()))
 		environ.USER = uinfo.name
 		environ.SHELL = uinfo.shell
+		environ.PATH = shutils.defaultSearchPath(uinfo.name)
+		environ.HOME = uinfo.home
+		environ.USERINFO = uinfo.userInfo
 		assert(k.exec(uinfo.shell, nil, environ))
 	end))
 	assert(k.waitpid(pid))
@@ -57,7 +54,6 @@ while true do
 	if not tryLogin(name:sub(1, -2)) then
 		print("login failed")
 		k.sleep(math.random() * 2.5 + 0.5)
-		k.write(1, "\x1b[2J\x1b[H")
 	end
 	coroutine.yield()
 end

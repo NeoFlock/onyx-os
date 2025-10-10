@@ -166,6 +166,7 @@ function keyboard.charToCode(n)
         ["\x1b"] = "escape",
 		["\x03"] = "c",
 		["\x04"] = "d",
+		["\x7F"] = "delete",
     }
     c = map[c] or c
     return keyboard.keys[c] or 0

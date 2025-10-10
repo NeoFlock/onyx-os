@@ -1,4 +1,3 @@
----@diagnostic disable: lowercase-global
 function table.copy(t)
 	if type(t) == "table" then
 		local nt = {}
@@ -72,20 +71,43 @@ local function isGoodKey(s)
 	return type(s) == "string" and string.format("%q", s) == ('"' .. s .. '"')
 end
 
-function table.serialize(val, refs)
+---@param s string
+---@param c? string
+local function color(s, c)
+	if not c then return s end
+	return c .. s .. "\x1b[0m"
+end
+
+---@type table<type, string>
+table.colorTypeInfo = {
+	["nil"] = "\x1b[34m",
+	boolean = "\x1b[34m",
+	number = "\x1b[92m",
+	string = "\x1b[32m",
+	table = "\x1b[90m",
+	thread = "\x1b[35m",
+	["function"] = "\x1b[35m",
+	["userdata"] = "\x1b[35m",
+	--- definitely a lua type trust me
+	docs = "\x1b[33m",
+}
+
+---@param colorinfo? table<type, string>
+function table.serialize(val, refs, colorinfo)
 	refs = refs or {}
+	colorinfo = colorinfo or {}
 	if type(val) == "table" then
-		if refs[val] then return "..." end
+		if refs[val] then return color("...", colorinfo.table) end
 		refs[val] = true
 		if getmetatable(val) and getmetatable(val).__tostring then
-			return tostring(val)
+			return color(tostring(val), colorinfo.docs)
 		end
-		local s = "{"
+		local s = color("{", colorinfo.table)
 		local list = {}
 		local done = {}
 		for i, item in ipairs(val) do
 			done[i] = true
-			table.insert(list, table.serialize(item, refs))
+			table.insert(list, table.serialize(item, refs, colorinfo))
 		end
 		for k, v in pairs(val) do
 			if not done[k] then
@@ -94,19 +116,19 @@ function table.serialize(val, refs)
 				if isGoodKey(k) then
 					pair = k
 				else
-					pair = "[" .. table.serialize(k, refs) .. "]"
+					pair = "[" .. table.serialize(k, refs, colorinfo) .. "]"
 				end
-				k = k .. " = " .. table.serialize(v, refs)
+				k = pair .. " = " .. table.serialize(v, refs, colorinfo)
 				table.insert(list, k)
 			end
 		end
 		s = s .. table.concat(list, ", ")
-		s = s .. "}"
+		s = s .. color("}", colorinfo.table)
 		return s
 	elseif type(val) == "string" then
-		return string.format("%q", val)
+		return color(string.format("%q", val), colorinfo.string)
 	else
-		return tostring(val)
+		return color(tostring(val), colorinfo[type(val)])
 	end
 end
 
@@ -266,6 +288,11 @@ end
 function loadfile(filename, mode, env)
 	local code, err = readfile(filename)
 	if not code then return nil, err end
+	if code:sub(1,2) == "#!" then
+		-- shebang!
+		local ln = string.find(code, "\n") or #code
+		code = code:sub(ln+1)
+	end
 	return load(code, "=" .. filename, mode, env)
 end
 

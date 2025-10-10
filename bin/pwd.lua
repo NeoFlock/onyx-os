@@ -2,4 +2,4 @@
 
 local shutils = require("shutils")
 
-print(shutils.getUser())
+print(shutils.getWorkingDirectory())

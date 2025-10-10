@@ -172,10 +172,11 @@ A sequence of `;`-separated numbers. If none are present, a `0` is added implici
 - `100-107` - Set bright background color (8-15)
 
 ### GPU (CSI)
-> Take from UlOS, these escapes allow GPU operations encoded in CSIs
+> Taken from or inspired by UlOS, these escapes allow GPU operations encoded in CSIs
 
 - `CSI 1;x;y;w;h;c U`, which will perform `gpu.fill(x, y, w, h, unicode.char(c))`
 - `CSI 2;x;y;w;h;dx;dy U`, which will perform `gpu.copy(x, y, w, h, dx, dy)`
+- `CSI 3;w;g U`, which will perform `gpu.setResolution(w, h)`
 
 ### VRAM buffers (CSI)
 > TODO: VRAM buffers

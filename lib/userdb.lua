@@ -80,4 +80,70 @@ function userdb.writePasswd(users, file)
 	return writefile(file or "/etc/passwd", table.concat(lines, "\n") .. "\n")
 end
 
+---@param hash string
+---@param pass string
+---@return boolean
+function userdb.checkpasshash(hash, pass)
+	if hash == "" then return true end
+	if hash:sub(1,1) == "=" then
+		return hash:sub(2) == pass
+	end
+	return true
+end
+
+---@param user string
+---@param users? userdb.user[]
+function userdb.getinfo(user, users)
+	users = users or assert(userdb.parsePasswd())
+	for _, u in ipairs(users) do
+		if u.name == user then return u end
+	end
+end
+
+---@param user string
+---@param users? userdb.user[]
+function userdb.getShell(user, users)
+	return userdb.getinfo(user, users).shell
+end
+
+---@param user string
+---@param users? userdb.user[]
+function userdb.getHome(user, users)
+	return userdb.getinfo(user, users).home
+end
+
+-- Compute a checkpasshash-compatible hash for the password
+---@param pass string
+---@return string
+function userdb.hashpassword(pass)
+	if pass == "" then return "" end
+	-- TODO: hash, cuz this is for exact passwords
+	return "=" .. pass
+end
+
+---@param user string
+---@param pass string
+---@param users? userdb.user[]
+---@param shadows? userdb.shadow[]
+function userdb.checkpass(user, pass, users, shadows)
+	users = users or assert(userdb.parsePasswd())
+	shadows = shadows or {} -- TODO: read /etc/shadow
+
+	for _, uinfo in ipairs(users) do
+		if uinfo.name == user then
+			if uinfo.password == "x" then
+				for _, shadow in ipairs(shadows) do
+					if shadow.name == user then
+						return userdb.checkpasshash(shadow.password, pass)
+					end
+				end
+				return false
+			end
+			return userdb.checkpasshash(uinfo.password, pass)
+		end
+	end
+
+	return false
+end
+
 return userdb

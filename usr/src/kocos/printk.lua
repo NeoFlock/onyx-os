@@ -73,14 +73,16 @@ if gpu and screen then
 		if lightOn then return end
 		lightOn = true
 		swapColors()
-		component.invoke(gpu, "set", x, y, " ")
+		local c = component.invoke(gpu, "get", x, y)
+		component.invoke(gpu, "set", x, y, c)
 	end
 
 	local function hideCursor()
 		if not lightOn then return end
 		lightOn = false
 		swapColors()
-		component.invoke(gpu, "set", x, y, " ")
+		local c = component.invoke(gpu, "get", x, y)
+		component.invoke(gpu, "set", x, y, c)
 	end
 
 	local function toggleCursor()
@@ -337,7 +339,7 @@ if gpu and screen then
 				return
 			end
 			if nums[1] == 8 then
-				local mw, mh = component.invoke(gpu, "getResolution")
+				local mw, mh = component.invoke(gpu, "maxResolution")
 				keybuf = keybuf .. string.format("\x1b[%d;%dR", mw, mh)
 				return
 			end
@@ -350,6 +352,7 @@ if gpu and screen then
 		if action == "h" then
 			if params == "?25" then
 				enableBlink()
+				showCursor()
 				return
 			end
 			if params == "?1004" then
@@ -365,6 +368,7 @@ if gpu and screen then
 		if action == "l" then
 			if params == "?25" then
 				disableBlink()
+				hideCursor()
 				return
 			end
 			if params == "?1004" then
@@ -386,6 +390,25 @@ if gpu and screen then
 				component.invoke(gpu, "copy", nums[2] or 1, nums[3] or 1, nums[4] or w, nums[5] or h, nums[6] or 0, nums[7] or 0)
 				return
 			end
+			if nums[1] == 3 then
+				local _w = nums[2] or w
+				local _h = nums[3] or h
+				if component.invoke(gpu, "setResolution", _w, _h) then
+					w = _w
+					h = _h
+				end
+				return
+			end
+			return
+		end
+		if action == "v" then
+			if nums[1] == 1 then
+				local free = component.invoke(gpu, "freeMemory") or 0
+				local total = component.invoke(gpu, "totalMemory") or 0
+				keybuf = keybuf .. string.format("\x1b[%d;%dR", free, total)
+				return
+			end
+			return
 		end
 	end
 
@@ -402,12 +425,12 @@ if gpu and screen then
 				esc = nil -- yeah no
 				return
 			end
-			if c:byte() == 7 and #esc == 0 then
+			if c == "7" and #esc == 0 then
 				sx, sy = x, y
 				esc = nil
 				return
 			end
-			if c:byte() == 8 and #esc == 0 then
+			if c == "8" and #esc == 0 then
 				x, y = sx, sy
 				esc = nil
 				return
@@ -513,20 +536,33 @@ if gpu and screen then
 		if Kocos.disableScreen then return end
 		if kbAddr ~= keyboard then return end
 		local mods = 0
-		if keysHeld[0x2A] or keysHeld[0x36] then
+		local ctrl = false
+		if keysHeld[0x2A] or keysHeld[0x36] then -- shift
 			mods = mods + 1
 		end
-		if keysHeld[0x38] or keysHeld[0xB8] then
+		if keysHeld[0x38] or keysHeld[0xB8] then -- alt / menu
 			mods = mods + 2
 		end
-		if keysHeld[0x1D] or keysHeld[0x9D] then
+		if keysHeld[0x1D] or keysHeld[0x9D] then -- control
 			mods = mods + 4
+			ctrl = true
 		end
-		if keysHeld[0] then
+		if keysHeld[0] then -- meta
 			mods = mods + 8
 		end
 		if ev == "key_down" then
 			keysHeld[cod] = true
+			if ctrl then
+				-- to fix possible complications on other environments
+				if cod == 0x20 then
+					keybuf = keybuf .. string.char(4) -- Ctrl-D
+					return
+				end
+				if cod == 0x2E then
+					keybuf = keybuf .. string.char(3) -- Ctrl-C
+					return
+				end
+			end
 			if isTerminalPrintable(chr) then
 				keybuf = keybuf .. unicode.char(chr)
 				return

@@ -1,0 +1,72 @@
+--!lua
+--[[
+// vim: set ft=lua
+]]
+
+local shutils = require("shutils")
+
+local newEnv = table.copy(k.environ())
+---@type string?
+local arg0
+
+---@type string[]
+local args = {...}
+
+while #args > 0 do
+	if args[1]:sub(1, 1) ~= "-" then break end
+	local arg = table.remove(args, 1)
+
+	-- TODO: support the longform syntax too
+	if arg == "-" then
+		break
+	elseif arg == "-a" then
+		arg0 = table.remove(args, 1)
+	elseif arg == "-i" or arg == "--ignore-environment" then
+		newEnv = {}
+	elseif arg == "-u" then
+		local n = assert(table.remove(args, 1), "missing NAME")
+		newEnv[n] = nil
+	elseif arg == "-C" then
+	elseif arg == "--help" then
+		print("TODO: help page")
+		return 0
+	elseif arg == "--version" then
+		print("env (ONYX coreutils) 0.1")
+		return 0
+	else
+		print("unknown option:", arg)
+		return 125
+	end
+end
+
+while #args > 0 do
+	local a = args[1]
+	local eql = string.find(a, "=")
+	if not eql then break end
+	table.remove(args, 1)
+	local name = a:sub(1, eql-1)
+	local val = a:sub(eql+1)
+	newEnv[name] = val
+end
+
+if #args == 0 then
+	for name, val in pairs(newEnv) do
+		print(name,"=",val)
+	end
+	return 0
+end
+
+local cmd = table.remove(args, 1)
+args[0] = arg0 or cmd
+
+local bin = shutils.search(cmd)
+
+if not bin then
+	return 127
+end
+
+local ok, err = k.exec(bin, args, newEnv)
+if not ok then
+	print("Error:",err)
+	return 126
+end

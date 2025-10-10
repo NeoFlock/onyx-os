@@ -178,6 +178,20 @@ function syscalls.absolutepath(path)
 end
 
 ---@param path string
+---@return string
+function syscalls.canonical(path)
+	return Kocos.fs.canonical(path)
+end
+
+
+---@param s string
+---@vararg string
+---@return string
+function syscalls.join(s, ...)
+	return Kocos.fs.join(process.resolve(process.current, s), ...)
+end
+
+---@param path string
 ---@return boolean?, string?
 function syscalls.validlink(path)
 	path = process.resolve(process.current, path)
@@ -298,7 +312,7 @@ function syscalls.cmethods(addr)
 end
 
 function syscalls.cinvoke(addr, method, ...)
-	return component.methods(addr, method, ...)
+	return component.invoke(addr, method, ...)
 end
 
 ---@return Kocos.device?
@@ -526,6 +540,26 @@ function syscalls.setuid(uid, pid)
 		return false, errno.EPERM
 	end
 	target.uid = uid
+	return true
+end
+
+--- Set the tracer to process at [pid]
+---@param pid integer
+---@return boolean, string?
+function syscalls.strace(pid)
+	local p = process.allProcs[pid]
+	if not p then return false, errno.ESRCH end
+	if not process.isDecendantOf(process.current, p) then
+		return false, errno.EPERM
+	end
+	process.current.tracer = p
+	return true
+end
+
+---@param sig string
+---@param handler function
+function syscalls.signal(sig, handler)
+	process.current.signals[sig] = handler
 	return true
 end
 

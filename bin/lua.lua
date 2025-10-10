@@ -24,7 +24,7 @@ local function interactive()
 			if t[1] then
 				local bufs = {}
 				for i=2,#t do
-					bufs[i-1] = table.serialize(t[i])
+					bufs[i-1] = table.serialize(t[i], nil, table.colorTypeInfo)
 				end
 				print(table.concat(bufs, ", "))
 			else
@@ -90,8 +90,7 @@ while true do
 end
 
 if argv[1] then
-	local c = assert(readfile(argv[1]))
-	assert(load(c, "=" .. argv[1]))(table.unpack(argv, 2))
+	dofile(argv[1], table.unpack(argv, 2))
 end
 
 if interactiveAfterScript then

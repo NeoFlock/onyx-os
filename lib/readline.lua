@@ -8,18 +8,27 @@ local terminal = require("terminal")
 --- If hidden is an empty string, no text is printed (except newlines and Ctrl-D or Ctrl-C)
 --- If hidden is a non-empty string, every character is replaced with hidden.
 return function(fd, outfd, hidden)
-	fd = fd or 0
-	outfd = outfd or 1
+	fd = fd or terminal.STDIN
+	outfd = outfd or terminal.STDOUT
 	-- this function executes in the context of the current process
 	local buf = ""
-	local term = terminal.wrap(fd)
-	k.write(outfd, "\x1b[?25h")
+	local term = terminal.wrap(fd, outfd)
+	term:showCursor()
+	local ex, ey = term:getCursor()
+	local cursor = 0
+	local function hiddenText(text)
+		if hidden then
+			if #hidden == 0 then return hidden end
+			return text:gsub(".", hidden)
+		end
+		return text
+	end
+	local function graphics()
+		return hidden ~= ""
+	end
 	while true do
 		---@type string?
-		local ev, _, char, code = term:pull()
-		if not ev then
-			term:process()
-		end
+		local ev, _, char, code = term:pullUntilEvent(true)
 		if ev == "clipboard" then
 			local pasted = string.gsub(code, ".", {
 				-- erase the problematics
@@ -33,49 +42,90 @@ return function(fd, outfd, hidden)
 				["\t"] = " ",
 			})
 			buf = buf .. pasted
-			if hidden then
-				if #hidden > 0 then
-					k.write(outfd, pasted:gsub(".", hidden))
-				end
-			else
-				k.write(outfd, pasted)
-			end
+			term:write(hiddenText(pasted))
+		end
+		if ev == "interrupted" then
+			-- SIGINT
+			term:write(hiddenText("^C"))
+			term:hideCursor()
+			error("interrupted") -- TODO: use signal
+			return
 		end
 		if ev == "key_down" then
 			if char == 3 then
 				-- SIGINT
-				k.write(outfd, "^C")
-				k.write(outfd, "\x1b[?25l")
+				term:write(hiddenText"^C", "\n")
+				term:hideCursor()
 				error("interrupted") -- TODO: use signal
 			elseif char == 4 then
 				-- closing stdin
-				k.write(outfd, "^D\n")
-				k.write(outfd, "\x1b[?25l")
+				term:write(hiddenText"^D", "\n")
+				term:hideCursor()
 				return
 			elseif code == keyboard.keys.enter then
-				k.write(outfd, "\n")
-				k.write(outfd, "\x1b[?25l")
+				term:write("\n")
+				term:hideCursor()
 				return buf .. "\n"
 			elseif code == keyboard.keys.back then
-				if #buf > 0 then
-					if (not hidden) or (#hidden > 0) then
-						k.write(outfd, "\b")
+				if cursor > 0 then
+					if graphics() then
+						term:write("\b")
+						term:clearScreenAfterCursor()
+						term:saveCursor()
+						term:write(buf:sub(cursor+1))
+						term:restoreCursor()
 					end
-					buf = buf:sub(1, -2)
+					buf = buf:sub(1, cursor-1) .. buf:sub(cursor+1)
+					cursor = cursor - 1
+				end
+			elseif code == keyboard.keys.delete then
+				if cursor < #buf then
+					if graphics() then
+						term:saveCursor()
+						term:write(buf:sub(cursor+2))
+						term:write(" ")
+						term:restoreCursor()
+					end
+					buf = buf:sub(1, cursor) .. buf:sub(cursor+2)
+				end
+			elseif code == keyboard.keys.home then
+				cursor = 0
+				term:setCursor(ex, ey)
+			elseif code == keyboard.keys["end"] then
+				term:write(buf:sub(cursor+1))
+				cursor = #buf
+			elseif code == keyboard.keys.left then
+				if cursor > 0 then
+					cursor = cursor - 1
+					term:setCursor(ex, ey)
+					term:write(buf:sub(1, cursor))
+					term:showCursor()
+				end
+			elseif code == keyboard.keys.right then
+				if cursor < #buf then
+					cursor = cursor + 1
+					term:write(buf:sub(cursor, cursor))
+					term:showCursor()
 				end
 			elseif keyboard.isPrintable(char) then
 				-- TODO: ANSI escapes and stuff
 				local c = string.char(char)
-				buf = buf .. c
-				if hidden then
-					if #hidden > 0 then
-						k.write(outfd, hidden)
-					end
+				if cursor >= #buf then
+					-- super easy
+					buf = buf .. c
+					term:write(hiddenText(c))
+					cursor = cursor + 1
 				else
-					k.write(outfd, c)
+					-- shit got good here
+					buf = buf:sub(1, cursor) .. c .. buf:sub(cursor+1)
+					-- <before><cursor><after>
+					cursor = cursor + 1
+					term:write(hiddenText(c))
+					term:saveCursor()
+					term:write(hiddenText(buf:sub(cursor+1)))
+					term:restoreCursor()
 				end
 			end
 		end
-		coroutine.yield() -- actually allow OS to process events
 	end
 end
