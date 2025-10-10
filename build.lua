@@ -14,10 +14,12 @@ local toBuild = {
 	"onyx",
 }
 
-if #arg > 0 then
+local args={...}
+
+if #args > 0 then
 	toBuild = {}
-	for i=1,#arg do
-		table.insert(toBuild, arg[i])
+	for i=1,#args do
+		table.insert(toBuild, args[i])
 	end
 end
 

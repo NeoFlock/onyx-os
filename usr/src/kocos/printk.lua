@@ -38,13 +38,9 @@ local gpu, screen = component.list("gpu")(), component.list("screen")()
 
 if gpu and screen then
 	component.invoke(gpu, "bind", screen)
-	component.invoke(gpu, "setForeground", 0xFFFFFF)
-	component.invoke(gpu, "setBackground", 0x000000)
 
 	local x, y = 1, 1
 	local w, h = component.invoke(gpu, "maxResolution")
-	component.invoke(gpu, "setResolution", w, h)
-	component.invoke(gpu, "fill", 1, 1, w, h, " ")
 
 	local buf = ""
 	local keybuf = ""
@@ -107,7 +103,7 @@ if gpu and screen then
 		end, math.huge)
 	end
 
-	local stdClrs = {
+	local stdClrs = Kocos.args.termStdColors or {
 		-- taken from https://en.wikipedia.org/wiki/ANSI_escape_code#Control_Sequence_Introducer_commands
 		-- Mix of VS Code and VGA.
 		-- BG is auto-computed.
@@ -128,6 +124,15 @@ if gpu and screen then
 		[96] = color(85, 255, 255), -- bright cyan
 		[97] = color(255, 255, 255), -- bright white
 	}
+
+	local defaultFg = Kocos.args.termDefaultFg or stdClrs[37]
+	local defaultBg = Kocos.args.termDefaultBg or stdClrs[30]
+
+	component.invoke(gpu, "setForeground", defaultFg)
+	component.invoke(gpu, "setBackground", defaultBg)
+
+	component.invoke(gpu, "setResolution", w, h)
+	component.invoke(gpu, "fill", 1, 1, w, h, " ")
 
 	local color256 = {
 		[0] = stdClrs[30],
@@ -281,8 +286,8 @@ if gpu and screen then
 			while #nums > 0 do
 				local op = pop()
 				if op == 0 then
-					component.invoke(gpu, "setForeground", 0xFFFFFF)
-					component.invoke(gpu, "setBackground", 0x000000)
+					component.invoke(gpu, "setForeground", defaultFg)
+					component.invoke(gpu, "setBackground", defaultBg)
 				elseif op == 7 then
 					swapColors()
 				elseif op == 8 then
@@ -298,7 +303,7 @@ if gpu and screen then
 				elseif op >= 100 and op <= 107 then
 					component.invoke(gpu, "setBackground", stdClrs[op-10])
 				elseif op == 38 then
-					local clr = 0xFFFFFF
+					local clr = defaultFg
 					local n = pop()
 					if n == 5 then
 						clr = color256[pop()]
@@ -310,7 +315,7 @@ if gpu and screen then
 					end
 					component.invoke(gpu, "setForeground", clr)
 				elseif op == 48 then
-					local clr = 0xFFFFFF
+					local clr = defaultBg
 					local n = pop()
 					if n == 5 then
 						clr = color256[pop()]
@@ -322,9 +327,9 @@ if gpu and screen then
 					end
 					component.invoke(gpu, "setBackground", clr)
 				elseif op == 39 then
-					component.invoke(gpu, "setForeground", 0xFFFFFF)
+					component.invoke(gpu, "setForeground", defaultFg)
 				elseif op == 49 then
-					component.invoke(gpu, "setBackground", 0x000000)
+					component.invoke(gpu, "setBackground", defaultBg)
 				end
 			end
 			return
@@ -399,6 +404,13 @@ if gpu and screen then
 				end
 				return
 			end
+			if nums[1] == 4 then
+				local x = nums[2] or x
+				local y = nums[3] or y
+				local c, f, g = component.invoke(gpu, "get", x, y)
+				keybuf = keybuf .. string.format("\x1b[%d;%d;%dR", string.byte(c), f, g)
+				return
+			end
 			return
 		end
 		if action == "v" then
@@ -416,6 +428,12 @@ if gpu and screen then
 	local function doOSC(cmd)
 		if cmd:sub(1, 2) == "0;" then
 			Kocos.printk(Kocos.L_WARN, cmd:sub(3))
+		end
+		if cmd:sub(1, 2) == "1;" then
+			local ok, _, cx, cy, msg = string.find(cmd:sub(3), "([%d+]);([%d+]);(.*)")
+			if ok then
+				component.invoke(gpu, "set", tonumber(cx) or x, tonumber(cy) or y, msg)
+			end
 		end
 	end
 
@@ -702,10 +720,8 @@ function Kocos.printk(severity, msg)
 			Kocos.event.notifyListeners("kocos_panic", uptime, msg)
 			return
 		end
-		computer.beep(500)
-		while true do
-			pcall(Kocos.event.pull)
-		end
+		pcall(Kocos.event.pull, 5)
+		computer.shutdown(true)
 	end
 end
 

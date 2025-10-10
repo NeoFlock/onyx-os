@@ -335,4 +335,61 @@ function terminal:restoreCursor()
 	self:write(terminal.ESC, "8")
 end
 
+---@param x integer
+---@param y integer
+---@param w integer
+---@param h integer
+---@param c string
+function terminal:fill(x, y, w, h, c)
+	self:write(terminal.CSI, "1;", x, ";", y, ";", w, ";", h, ";", string.byte(c), "U")
+end
+
+---@param x integer
+---@param y integer
+---@param w integer
+---@param h integer
+---@param dx integer
+---@param dy integer
+function terminal:copy(x, y, w, h, dx, dy)
+	self:write(terminal.CSI, "2;", x, ";", y, ";", w, ";", h, ";", dx, ";", dy, "U")
+end
+
+---@param x integer
+---@param y integer
+---@param s string
+function terminal:set(x, y, s)
+	self:writeOSC(string.format("1;%d;%d;%s", x, y, s))
+end
+
+---@param x integer
+---@param y integer
+---@return string, integer, integer
+function terminal:get(x, y)
+	self:write(terminal.CSI, "4;", x, ";", y, "U")
+	local resp = self:blockUntilResponse()
+	local nums = string.split(resp, ";")
+	return unicode.char(tonumber(nums[1]) or 32), tonumber(nums[2]) or 0, tonumber(nums[3]) or 0
+end
+
+---@param c integer
+---@return integer, integer, integer
+local function splitColor(c)
+	local r = math.floor(c / 65536) % 256
+	local g = math.floor(c / 256) % 256
+	local b = c % 256
+	return r, g, b
+end
+
+---@param c integer
+function terminal:setForeground(c)
+	local r, g, b = splitColor(c)
+	self:write(terminal.CSI, "38;2;", r, ";", g, ";", b, "m")
+end
+
+---@param c integer
+function terminal:setBackground(c)
+	local r, g, b = splitColor(c)
+	self:write(terminal.CSI, "48;2;", r, ";", g, ";", b, "m")
+end
+
 return terminal

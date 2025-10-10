@@ -51,4 +51,42 @@ function Kocos._default_luaExec(ev, path, f, namespace)
 	}
 end
 
+-- Header: #! (2 bytes)
+-- Links in: nothing
+---@param ev "PROC-binfmt"
+---@param path string
+---@param f Kocos.fs.FileDescriptor
+---@param namespace _G
+---@return Kocos.process.image?, string?
+function Kocos._default_shebang(ev, path, f, namespace)
+	if ev ~= "PROC-binfmt" then return end
+	local ln = Kocos.fs.read(f, 128)
+	if not ln then return end
+	if ln:sub(1, 2) ~= "#!" then return end
+
+	local nl = string.find(ln, "\n")
+	if nl then
+		ln = string.sub(ln, 1, nl-1)
+	end
+
+	local cmd = ln:sub(3)
+	local args = string.split(cmd, " ")
+	cmd = table.remove(args, 1)
+	table.insert(args, path)
+	return {
+		init = function()
+			local ok, err = syscall("exec", cmd, args)
+			if ok then
+				return 0
+			else
+				syscall("write", Kocos.process.STDERR, err .. "\n")
+				return 1
+			end
+		end,
+		deps = {},
+		modules = {},
+	}
+end
+
 Kocos.addDriver(Kocos._default_luaExec)
+Kocos.addDriver(Kocos._default_shebang)

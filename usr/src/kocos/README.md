@@ -176,7 +176,9 @@ A sequence of `;`-separated numbers. If none are present, a `0` is added implici
 
 - `CSI 1;x;y;w;h;c U`, which will perform `gpu.fill(x, y, w, h, unicode.char(c))`
 - `CSI 2;x;y;w;h;dx;dy U`, which will perform `gpu.copy(x, y, w, h, dx, dy)`
-- `CSI 3;w;g U`, which will perform `gpu.setResolution(w, h)`
+- `CSI 2;x;y;w;h;dx;dy U`, which will perform `gpu.copy(x, y, w, h, dx, dy)`
+- `CSI 3;w;h U`, which will perform `gpu.setResolution(w, h)`
+- `CSI 4;x;y U`, which will perform `gpu.get(x, y)`, and will respond with `CSI c;f;b R`, where c is the codepoint of the character, f is the foreground and b is the background
 
 ### VRAM buffers (CSI)
 > TODO: VRAM buffers
@@ -192,6 +194,7 @@ Supported OSCs (specified as the contents between the start and terminator) are:
 - `0;<message>`, which will either emit a kernel `L_WARN` log. In other applications, may change window title if applicable
 - `8;;link`, which may open a link in some application, if applicable. In the KOCOS virtual terminal, it does nothing
 - `Pnrrggbb`, where `n` is a hexadecimal digit and `rrggbb` is an RGB color in hexadecimal. Will change the 16 color palette's appropriate entry to that color.
+- `1;<x>;<y>;<msg>`, performs a `gpu.set()`
 
 ## Terminal Input Sequences
 

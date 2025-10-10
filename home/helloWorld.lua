@@ -1,2 +1,2 @@
-#!/bin/lua.lua
+#!/usr/bin/env lua
 print("Hello, world!")
