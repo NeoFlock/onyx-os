@@ -7,8 +7,6 @@ local shutils = require("shutils")
 local term = terminal.stdio()
 
 ---@type string[]
-local ansiLines = {}
----@type string[]
 local infoLines = {}
 
 local sysinfo = assert(k.sysinfo())
@@ -82,8 +80,6 @@ local asciiArt = {
     (_)  
 ]]
 }
-
-local w, h = terminal.stdterm():getResolution()
 
 local brand = getOsBrand()
 local art = asciiArt[brand] or asciiArt.Unnamed
