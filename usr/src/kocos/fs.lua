@@ -46,7 +46,8 @@ fs.F_NOTIF = "F_NOTIF"
 fs.EV_CLOSED = "closed"
 -- As extra arguments: an integer, containing the length of the data that can be read without blocking
 fs.EV_DATAREADY = "data-ready"
--- As extra argumnets: a boolean, indicating success, an an optional string, indicating error if applicable
+-- As extra argumnets: a string, indicating request ID, and an optional string, indicating error if applicable. If no error is passed, operation is assumed to have succeeded atomically.
+-- The string ID is conventionally obtained as the error of the successful write.
 fs.EV_WRITEDONE = "write-done"
 
 ---@class Kocos.fs.FileDescriptor
@@ -55,7 +56,7 @@ fs.EV_WRITEDONE = "write-done"
 ---@field seek? fun(self, whence: seekwhence, off: integer): integer?, string?
 ---@field close? fun(self)
 ---@field ioctl? fun(self, action: string, ...): ...
----@field setflags? fun(self, flags: integer)
+---@field flags integer
 --- This field should be invoked by the code managing this file descriptor
 --- To notify whoever is listening on file system events
 --- This is often used for asynchronous I/O, and allows for realtime responses
@@ -300,15 +301,6 @@ function fs.ioctl(fd, action, ...)
 end
 
 ---@param fd Kocos.fs.FileDescriptor
----@param flags integer
-function fs.setflags(fd, flags)
-	if fd.setflags then
-		return fd:setflags(flags)
-	end
-	return nil, Kocos.errno.EBADF
-end
-
----@param fd Kocos.fs.FileDescriptor
 ---@param listener function?
 function fs.setlistener(fd, listener)
 	fd.listener = listener
@@ -334,6 +326,7 @@ function fs.fd_from_rwf(reader, writer, finalizer, ioctl)
 		write = writer,
 		close = finalizer,
 		ioctl = ioctl,
+		flags = 0,
 	}
 end
 
@@ -493,6 +486,7 @@ function fs._defaultManagedFS(req, ...)
 			close = function()
 				dev.close(fd)
 			end,
+			flags = 0,
 		}
 	end
 end

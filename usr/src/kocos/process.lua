@@ -24,6 +24,7 @@ process.STDTERM = 3
 ---@field refc integer
 ---@field opts integer
 ---@field file? Kocos.fs.FileDescriptor
+---@field socket? Kocos.net.socket
 
 ---@alias Kocos.process.condition fun(): boolean
 
@@ -52,6 +53,7 @@ process.STDTERM = 3
 ---@field exitcode integer
 ---@field tracer? Kocos.process
 ---@field daemon? string
+---@field ev_listener? function
 
 ---@type table<integer, Kocos.process>
 process.allProcs = {}
@@ -261,14 +263,8 @@ function process.closeResource(res)
 	if res.file then
 		Kocos.fs.close(res.file)
 	end
-end
-
----@param res Kocos.resource
----@param flags integer
-function process.setResourceFlags(res, flags)
-	res.opts = flags
-	if res.file and res.file.setflags then
-		res.file:setflags(flags)
+	if res.socket then
+		Kocos.net.close(res.socket)
 	end
 end
 
@@ -300,6 +296,15 @@ function process.terminate(proc, exit)
 	end
 
 	process.raise(proc, process.SIGABRT)
+
+	if proc.driver then
+		Kocos.removeDriver(proc.driver)
+		proc.driver = nil
+	end
+	if proc.ev_listener then
+		Kocos.event.forget(proc.ev_listener)
+		proc.ev_listener = nil
+	end
 
 	if proc.daemon then
 		-- daemon is gone

@@ -6,8 +6,7 @@ local syscalls = {}
 
 ---@param path string
 ---@param mode "r"|"a"|"w"
----@param opts? integer
-function syscalls.open(path, mode, opts)
+function syscalls.open(path, mode)
 	-- TODO: validate permissions
 
 	if type(path) ~= "string" or type(mode) ~= "string" then
@@ -15,10 +14,6 @@ function syscalls.open(path, mode, opts)
 	end
 
 	if mode ~= "r" and mode ~= "w" and mode ~= "a" then
-		return nil, errno.EINVAL
-	end
-	opts = opts or 0
-	if type(opts) ~= "number" or math.floor(opts) ~= opts then
 		return nil, errno.EINVAL
 	end
 
@@ -29,7 +24,6 @@ function syscalls.open(path, mode, opts)
 
 	---@type Kocos.resource
 	local res = {refc = 1, opts = 0, file = file}
-	process.setResourceFlags(res, opts)
 
 	return process.moveResource(process.current, res)
 end
@@ -109,6 +103,9 @@ function syscalls.read(fd, length)
 		if f.file then
 			return Kocos.fs.read(f.file, length)
 		end
+		if f.socket then
+			return Kocos.net.read(f.socket, length)
+		end
 		-- TODO: other resource types
 	end
 	return nil, errno.EBADF
@@ -129,6 +126,9 @@ function syscalls.write(fd, data)
 	if f then
 		if f.file then
 			return Kocos.fs.write(f.file, data)
+		end
+		if f.socket then
+			return Kocos.net.write(f.socket, data)
 		end
 		-- TODO: other resource types
 	end
@@ -179,7 +179,101 @@ function syscalls.ioctl(fd, action, ...)
 	if f.file then
 		return Kocos.fs.ioctl(f.file, action, ...)
 	end
+	if f.socket then
+		return Kocos.net.ioctl(f.socket, action, ...)
+	end
 	return nil, errno.EBADF
+end
+
+---@param domain string
+---@param protocol string
+---@param host string
+--- Either a name of an application-layer protocol or the port number
+---@param service? string|integer
+---@return Kocos.net.addrinfo?, string?
+function syscalls.getaddrinfo(domain, protocol, host, service)
+	if type(domain) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	if type(protocol) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	if type(host) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	if type(service) ~= "string" and type(service) ~= "number" and type(service) ~= "nil" then
+		return nil, errno.EINVAL
+	end
+	return Kocos.net.getaddrinfo(domain, protocol, host, service)
+end
+
+---@param domain string
+---@param socktype string
+---@param protocol? string
+---@return integer?, string?
+function syscalls.socket(domain, socktype, protocol)
+	if type(domain) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	if type(socktype) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	if type(protocol) ~= "string" and type(protocol) ~= "nil" then
+		return nil, errno.EINVAL
+	end
+	local sock, err = Kocos.net.socket(domain, socktype, protocol)
+	if not sock then return nil, err end
+
+	return Kocos.process.moveResource(Kocos.process.current, {
+		refc = 1,
+		opts = 0,
+		socket = sock,
+	})
+end
+
+---@param fd integer
+function syscalls.accept(fd)
+	local res = process.current.fds[fd]
+	if not res then return nil, errno.EBADF end
+	local s = res.socket
+	if not s then return nil, errno.ENOTSOCK end
+
+	local client, err = Kocos.net.accept(s)
+	if not client then return nil, err end
+
+	return Kocos.process.moveResource(Kocos.process.current, {
+		refc = 1,
+		opts = 0,
+		socket = client,
+	})
+end
+
+---@param fd integer
+---@param addrinfo Kocos.net.addrinfo
+function syscalls.connect(fd, addrinfo)
+	-- prevents some security issues
+	setmetatable(addrinfo, nil)
+
+	local res = process.current.fds[fd]
+	if not res then return nil, errno.EBADF end
+	local s = res.socket
+	if not s then return nil, errno.ENOTSOCK end
+
+	return Kocos.net.connect(s, addrinfo)
+end
+
+---@param fd integer
+---@param addrinfo Kocos.net.addrinfo
+function syscalls.listen(fd, addrinfo)
+	-- prevents some security issues
+	setmetatable(addrinfo, nil)
+
+	local res = process.current.fds[fd]
+	if not res then return nil, errno.EBADF end
+	local s = res.socket
+	if not s then return nil, errno.ENOTSOCK end
+
+	return Kocos.net.listen(s, addrinfo)
 end
 
 ---@return integer?, string?
@@ -229,12 +323,14 @@ function syscalls.fcntl(fd, action, ...)
 			return nil, errno.EINVAL
 		end
 		flags = math.abs(math.floor(flags))
+		f.opts = flags
 		if f.file then
-			f.opts = flags
-			Kocos.fs.setflags(f.file, flags)
-			return true
+			f.file.flags = flags
 		end
-		return nil, errno.EBADF
+		if f.socket then
+			f.socket.flags = flags
+		end
+		return true
 	end
 	if action == Kocos.fs.F_NOTIF then
 		---@type string
@@ -244,6 +340,10 @@ function syscalls.fcntl(fd, action, ...)
 		end
 		if f.file then
 			Kocos.fs.notify(f.file, ...)
+			return true
+		end
+		if f.socket then
+			Kocos.net.notify(f.socket, ...)
 			return true
 		end
 		return nil, errno.EBADF
@@ -820,6 +920,36 @@ function syscalls.exit(code)
 	code = code or 0
 	process.terminate(process.current, code)
 	return 0
+end
+
+---@param driver? function
+---@return boolean?, string?
+function syscalls.mkdriver(driver)
+	local cur = process.current
+	if cur.euid ~= 0 then
+		return nil, errno.EPERM
+	end
+	if cur.driver then
+		Kocos.removeDriver(driver)
+	end
+	cur.driver = driver
+	Kocos.addDriver(driver)
+	return true
+end
+
+---@param listener? function
+---@return boolean?, string?
+function syscalls.mklistener(listener)
+	local cur = process.current
+	if cur.euid ~= 0 then
+		return nil, errno.EPERM
+	end
+	if cur.ev_listener then
+		Kocos.event.forget(cur.ev_listener)
+	end
+	cur.ev_listener = listener
+	Kocos.event.listen(listener)
+	return true
 end
 
 Kocos.syscalls = syscalls

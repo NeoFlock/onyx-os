@@ -46,7 +46,7 @@ errno.EALREADY = "connection already in progress"
 errno.EADDRINUSE = "address already in use"
 errno.EADDRNOTAVAIL = "address not available"
 errno.EAFNOSUPPORT = "address family not supported"
-errno.EWOULDBLOCK = "operation would block"
 errno.EXDEV = "invalid cross-device link"
+errno.EHOSTISDOWN = "host is unreachable"
 
 Kocos.errno = errno

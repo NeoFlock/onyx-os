@@ -22,6 +22,8 @@ local function computeDeviceFiles()
 			name = "usb" .. devfsAddrSuffix(addr)
 		elseif type == "gpu" then
 			name = "gpu" .. devfsAddrSuffix(addr)
+		elseif type == "tunnel" then
+			name = "tnl" .. devfsAddrSuffix(addr)
 		elseif type == "screen" then
 			name = "screen" .. devfsAddrSuffix(addr)
 		elseif type == "eeprom" then
@@ -34,6 +36,39 @@ local function computeDeviceFiles()
 	return f
 end
 
+---@param dev string
+---@return Kocos.fs.FileDescriptor?, string?
+local function devfsDevToFD(dev)
+	local t = component.type(dev)
+	if t == "tunnel" then
+		local s, err = Kocos.net.socket("AF_TUNNEL", "dgram")
+		if not s then return nil, err end
+		local ok, err2 = Kocos.net.connect(s, {address = dev, port = 0})
+		if not ok then return nil, err2 end
+		s.flags = 1
+		---@type Kocos.fs.FileDescriptor
+		return {
+			flags = 1,
+			write = function(_, data)
+				return Kocos.net.write(s, data)
+			end,
+			read = function(_, len)
+				return Kocos.net.read(s, len)
+			end,
+			close = function()
+				Kocos.net.close(s)
+			end,
+		}
+	end
+	---@type Kocos.fs.FileDescriptor
+	return {
+		flags = 0,
+		ioctl = function(_, method, ...)
+			return component.invoke(dev, method, ...)
+		end,
+	}
+end
+
 ---@param path string
 ---@param mode "r"|"w"|"a"
 ---@return Kocos.fs.FileDescriptor?, string?
@@ -44,6 +79,7 @@ local function devfsMakeFD(path, mode)
 		return {
 			write = function() return true end,
 			read = function() end,
+			flags = 0,
 		}
 	end
 	if path == "zero" then
@@ -54,6 +90,7 @@ local function devfsMakeFD(path, mode)
 				if len == math.huge then len = 1 end
 				return string.rep("\0", len)
 			end,
+			flags = 0,
 		}
 	end
 	if path == "random" then
@@ -68,6 +105,7 @@ local function devfsMakeFD(path, mode)
 				end
 				return c
 			end,
+			flags = 0,
 		}
 	end
 	if path == "hex" then
@@ -84,6 +122,7 @@ local function devfsMakeFD(path, mode)
 				end
 				return c
 			end,
+			flags = 0,
 		}
 	end
 	if path:sub(1,3) == "std" then
@@ -103,11 +142,15 @@ local function devfsMakeFD(path, mode)
 			seek = function(_, whence, off)
 				return syscall("seek", whence, off)
 			end,
-			setflags = function(_, flags)
-				return syscall("fcntl", Kocos.fs.F_SETFL, flags)
-			end,
 			-- no finalizer cuz no
+			-- flags are not shared. TODO: consider setting fd flags on use
+			flags = 0,
 		}
+	end
+	for f, dev in pairs(computeDeviceFiles()) do
+		if path == f then
+			return devfsDevToFD(dev)
+		end
 	end
 	return nil, errno.ENOENT
 end
