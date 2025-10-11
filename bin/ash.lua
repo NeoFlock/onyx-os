@@ -33,6 +33,7 @@ while true do
 						print("\x1b[31mError\x1b[0m:", err)
 					end
 				end))
+				k.ioctl(3, "setfgpid", child)
 				k.waitpid(child)
 			else
 				print("\x1b[31mError\x1b[0m: unknown command:", cmd)

@@ -178,6 +178,7 @@ process.SIGPWR = "SIGPWR" -- shutdown or reboot
 ---@param proc Kocos.process
 ---@param signal string
 function process.raise(proc, signal, ...)
+	if not proc then return end
 	if signal == process.SIGSTOP then
 		proc.stopped = true
 		if process.current == proc then coroutine.yield() end

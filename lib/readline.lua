@@ -48,7 +48,6 @@ return function(fd, outfd, hidden)
 			-- SIGINT
 			term:write(hiddenText("^C"))
 			term:hideCursor()
-			error("interrupted") -- TODO: use signal
 			return
 		end
 		if ev == "key_down" then
@@ -56,7 +55,7 @@ return function(fd, outfd, hidden)
 				-- SIGINT
 				term:write(hiddenText"^C", "\n")
 				term:hideCursor()
-				error("interrupted") -- TODO: use signal
+				return
 			elseif char == 4 then
 				-- closing stdin
 				term:write(hiddenText"^D", "\n")

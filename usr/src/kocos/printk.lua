@@ -45,6 +45,8 @@ if gpu and screen then
 	local buf = ""
 	local keybuf = ""
 
+	local targetPid
+
 	local function flush()
 		component.invoke(gpu, "set", x - #buf, y, buf)
 		buf = ""
@@ -570,16 +572,29 @@ if gpu and screen then
 		end
 		if ev == "key_down" then
 			keysHeld[cod] = true
+			local target = Kocos.process.allProcs[targetPid]
 			if ctrl then
 				-- to fix possible complications on other environments
 				if cod == 0x20 then
 					keybuf = keybuf .. string.char(4) -- Ctrl-D
 					return
 				end
-				if cod == 0x2E then
-					keybuf = keybuf .. string.char(3) -- Ctrl-C
+				if cod == 0x2E then -- Ctrl-C
+					if target then
+						Kocos.process.raise(target, Kocos.process.SIGINT)
+					else
+						keybuf = keybuf .. string.char(3)
+					end
 					return
 				end
+			end
+			if chr == 3 then -- also Ctrl-C
+				if target then
+					Kocos.process.raise(target, Kocos.process.SIGINT)
+				else
+					keybuf = keybuf .. string.char(3)
+				end
+				return
 			end
 			if isTerminalPrintable(chr) then
 				keybuf = keybuf .. unicode.char(chr)
@@ -632,6 +647,10 @@ if gpu and screen then
 	---@param ... any
 	---@return ...
 	function Kocos.scr_ioctl(action, ...)
+		if action == "setfgpid" then
+			targetPid = ...
+			return
+		end
 		if action == "terminfo" then
 			local hw_features = {}
 			local depth = component.invoke(gpu, "getDepth")
