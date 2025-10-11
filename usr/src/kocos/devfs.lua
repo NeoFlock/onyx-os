@@ -193,6 +193,24 @@ function Kocos._default_devfs(req, ...)
 		end
 		return false
 	end
+	if req == "FS-stat" then
+		---@type unknown, string
+		local _, path = ...
+		---@type integer
+		local size = 0 -- TODO: make it correct
+		---@type Kocos.fs.stat
+		return {
+			deviceAddress = "devfs",
+			deviceType = "devfs",
+			size = size,
+			createdAt = 0,
+			lastModified = 0,
+			diskUsed = 0,
+			diskTotal = 0,
+			inode = math.random(0, 2^32-1),
+			perms = 0,
+		}
+	end
 end
 
 Kocos.printk(Kocos.L_DEBUG, "devfs subsystem loaded")

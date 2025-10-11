@@ -14,6 +14,8 @@ local mounts = assert(k.getMounts())
 local hostname = shutils.getHostname()
 local user = shutils.getUser()
 
+local w, h = terminal.stdterm():getResolution()
+
 table.insert(infoLines, "OS: " .. sysinfo.os)
 table.insert(infoLines, "Kernel: " .. sysinfo.kernel)
 table.insert(infoLines, "Host: " .. hostname)
@@ -22,10 +24,13 @@ table.insert(infoLines, "Boot: " .. sysinfo.bootAddress)
 table.insert(infoLines, "User: " .. user)
 table.insert(infoLines, "Shell: " .. userdb.getShell(user))
 table.insert(infoLines, "Home: " .. userdb.getHome(user))
+table.insert(infoLines, "Resolution: " .. w .. " x " .. h)
 table.insert(infoLines, "Free Memory: " .. string.memformat(sysinfo.memfree) .. " / " .. string.memformat(sysinfo.memtotal))
 table.insert(infoLines, "Energy: " .. sysinfo.energy .. " FE / " .. sysinfo.maxEnergy ..  "FE")
 for dev, path in pairs(mounts) do
-	table.insert(infoLines, path .. " -> " .. dev:sub(1, 6) .. "...")
+	local stat = assert(k.stat(path))
+	local line = string.format("%s -> %s... (%s / %s %3.2f%%)", path, dev:sub(1, 6), string.memformat(stat.diskUsed), string.memformat(stat.diskTotal), stat.diskUsed / stat.diskTotal)
+	table.insert(infoLines, line)
 end
 
 local clr=""

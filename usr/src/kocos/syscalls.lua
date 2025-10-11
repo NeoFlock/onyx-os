@@ -259,6 +259,13 @@ function syscalls.list(path)
 end
 
 ---@param path string
+---@return Kocos.fs.stat?, string?
+function syscalls.stat(path)
+	path = process.resolve(process.current, path)
+	return Kocos.fs.stat(path)
+end
+
+---@param path string
 ---@return Kocos.fs.ftype?, string?
 function syscalls.ftype(path)
 	path = process.resolve(process.current, path)

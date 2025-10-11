@@ -20,6 +20,20 @@ fs.FTYPE_CHR = "chardev"
 ---@field writeSector fun(index: integer, data: string)
 --- readByte/writeByte considered harmful, evil and stinky
 
+---@class Kocos.fs.stat
+---@field deviceAddress string
+---@field deviceType string
+---@field inode integer
+---@field size integer
+---@field lastModified integer
+---@field createdAt integer
+---@field diskUsed integer
+---@field diskTotal integer
+--- Currently unused
+---@field perms integer
+--- Symlinks are not currently supported
+---@field linkPath? string
+
 fs.O_NONBLOCK = 1
 fs.O_CLOEXEC = 2
 
@@ -192,6 +206,27 @@ function fs.list(dir)
 		return nil, err or Kocos.errno.EHWPOISON
 	end
 	return files
+end
+
+---@param path string
+---@return Kocos.fs.stat?, string?
+function fs.stat(path, checklink)
+	if not fs.exists(path, checklink) then
+		return nil, Kocos.errno.ENOENT
+	end
+
+	local mnt, p = fs.resolve(path, checklink)
+
+	if not mnt.driver then
+		return nil, Kocos.errno.ENODRIVER
+	end
+
+	local stat, err = mnt.driver("FS-stat", mnt.driverData, p)
+
+	if not stat then
+		return nil, err or Kocos.errno.EHWPOISON
+	end
+	return stat
 end
 
 ---@param path string
@@ -421,6 +456,22 @@ function fs._defaultManagedFS(req, ...)
 		---@type Kocos.device, string
 		local dev, path = ...
 		return dev.makeDirectory(path)
+	end
+	if req == "FS-stat" then
+		---@type Kocos.device, string
+		local dev, path = ...
+		---@type Kocos.fs.stat
+		return {
+			deviceAddress = dev.address,
+			deviceType = dev.type,
+			size = dev.size(path),
+			createdAt = 0,
+			lastModified = dev.lastModified(path),
+			diskUsed = dev.spaceUsed(),
+			diskTotal = dev.spaceTotal(),
+			inode = math.random(0, 2^32-1),
+			perms = 0,
+		}
 	end
 	if req == "FS-openFile" then
 		---@type Kocos.device, string, string
