@@ -439,6 +439,9 @@ if gpu and screen then
 		end
 	end
 
+	local lastbeep = 0
+	local beepinterval = 5
+
 	local function putc(c)
 		if esc then
 			if #esc == MAX_ESC then
@@ -507,7 +510,12 @@ if gpu and screen then
 			x = x + 4
 		elseif c == "\a" then
 			flush()
-			computer.beep(200, 0.01)
+			local now = computer.uptime()
+			-- super slow so we cap it
+			if now - lastbeep > beepinterval then
+				--computer.beep(200, 0.01) -- just super slow
+				lastbeep = now
+			end
 		elseif c == "\b" then
 			flush()
 			if x > 1 then

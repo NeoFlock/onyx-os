@@ -31,7 +31,6 @@ local kargs = {
 kargs.debugger = component.list("ocelot")()
 
 if kargs.debugger then
-	component.invoke(kargs.debugger, "clearLog")
 	component.invoke(kargs.debugger, "log", "Selected as KGDB")
 end
 
