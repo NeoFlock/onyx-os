@@ -35,7 +35,7 @@ if kargs.debugger then
 	component.invoke(kargs.debugger, "log", "Selected as KGDB")
 end
 
-local kernelCode = ""
+local kernelCode = {}
 local kernelF = assert(component.invoke(fs, "open", "kernel"))
 
 while true do
@@ -44,11 +44,13 @@ while true do
 		error(err)
 	end
 	if not code then break end
-	kernelCode = kernelCode .. code
+	table.insert(kernelCode, code)
 end
 
 _OSVERSION = "ONYX v0.0.1"
 
-local f = assert(load(kernelCode, "=kocos"))
+local f = assert(load(function()
+	return table.remove(kernelCode, 1)
+end, "=kocos"))
 kernelCode = nil -- allow it to be GC'd
 f("kocos", kargs)
