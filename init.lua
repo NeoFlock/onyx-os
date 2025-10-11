@@ -22,7 +22,10 @@ local scratchy = {
 
 ---@type Kocos.config
 local kargs = {
-	termStdColors = scratchy,
+	-- uncomment to apply the theme
+	-- TODO: make bootloader support more themes and a config file for
+	-- theme selection
+	--termStdColors = scratchy,
 }
 
 kargs.debugger = component.list("ocelot")()

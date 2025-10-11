@@ -160,7 +160,6 @@ process.SIGUSR1 = "SIGUSR1" -- user specified
 process.SIGUSR2 = "SIGUSR2" -- user specified 2
 process.SIGCHLD = "SIGCHLD" -- child died
 process.SIGINT = "SIGINT" -- interrupted
-process.SIGIO = "SIGIO" -- something notified it of some IO
 process.SIGPIPE = "SIGPIPE" -- the pipe is gone
 process.SIGQUIT = "SIGQUIT" -- quit process
 process.SIGSTOP = "SIGSTOP" -- stop process
@@ -172,25 +171,64 @@ process.SIGTRAP = "SIGTRAP" -- a trap
 process.SIGCONT = "SIGCONT" -- continue
 process.SIGSYSC = "SIGSYSC" -- when tracing, traced process did a system call
 process.SIGSYSR = "SIGSYSR" -- when tracing, traced process did a system return
+process.SIGPWR = "SIGPWR" -- shutdown or reboot
 
 ---@param proc Kocos.process
 ---@param signal string
 function process.raise(proc, signal, ...)
 	if signal == process.SIGSTOP then
 		proc.stopped = true
+		if process.current == proc then coroutine.yield() end
 		return
 	end
 	if signal == process.SIGKILL then
-		process.close(proc)
+		process.terminate(proc)
 		return
 	end
 	if signal == process.SIGCONT then
 		proc.stopped = false
+		return
 	end
 	if proc.stopped then return end -- nope
 	if proc.signals[signal] then
 		-- Handler!!!!!!!
 		process.pcall(proc, proc.signals[signal], ...)
+		-- no return to allow unmodifiable behavior
+	else
+		-- Default handlers
+		if signal == process.SIGINT then
+			process.terminate(proc)
+			return
+		end
+		if signal == process.SIGPIPE then
+			process.terminate(proc)
+			return
+		end
+		if signal == process.SIGUSR1 then
+			process.terminate(proc)
+			return
+		end
+		if signal == process.SIGUSR2 then
+			process.terminate(proc)
+			return
+		end
+		if signal == process.SIGTRAP then
+			local err = ...
+			if type(err) == "string" then
+				process.pcall(proc, syscall, "write", process.STDERR, err .. "\n")
+			end
+			process.terminate(proc)
+			return
+		end
+		if signal == process.SIGTERM then
+			process.terminate(proc)
+			return
+		end
+	end
+
+	-- Unmodifiable behavior
+	if signal == process.SIGABRT then
+		process.terminate(proc, 1)
 		return
 	end
 end
@@ -244,10 +282,22 @@ function process.moveResource(proc, res)
 end
 
 ---@param proc Kocos.process
-function process.close(proc)
-	if proc.state == "dying" then return end -- nice try, signal handler
-	if not process.allProcs[proc.pid] then return end -- somehow died twice???
-	proc.state = "dying" -- to prevent bad shit
+---@param exit? integer
+function process.terminate(proc, exit)
+	if proc.state ~= "running" then return end -- nice try, signal handler
+	proc.state = "finished"
+	proc.exitcode = exit or 1
+	if proc == process.root then
+		Kocos.panickf("KERNEL EXITED: %d", proc.exitcode)
+		return
+	end
+	if proc == Kocos.process.init then
+		Kocos.panickf("INIT EXITED: %d", proc.exitcode)
+		return
+	end
+	if proc.parent then
+		process.raise(proc.parent, process.SIGCHLD, proc.pid, proc.exitcode)
+	end
 
 	process.raise(proc, process.SIGABRT)
 
@@ -255,6 +305,24 @@ function process.close(proc)
 		-- daemon is gone
 		process.daemons[proc.daemon] = nil
 	end
+
+	for _, res in pairs(proc.fds) do
+		process.closeResource(res)
+	end
+	proc.fds={}
+
+	if process.current == proc then
+		coroutine.yield()
+		return
+	end
+end
+
+---@param proc Kocos.process
+function process.close(proc)
+	if proc.state == "dying" then return end -- nice try, signal handler
+	if not process.allProcs[proc.pid] then return end -- somehow died twice???
+	process.terminate(proc, 1)
+	proc.state = "dying" -- to prevent bad shit
 
 	---@type Kocos.process[]
 	local allChildren = {}
@@ -268,9 +336,6 @@ function process.close(proc)
 		proc.parent.children[proc.pid] = nil
 	end
 
-	for _, res in pairs(proc.fds) do
-		process.closeResource(res)
-	end
 
 	process.allProcs[proc.pid] = nil -- and he's gone
 	proc.state = "dead"
@@ -430,6 +495,7 @@ end
 function process.resume(proc)
 	if proc.stopped then return end
 	if process.isBlocked(proc) then return end
+	if not process.isRunning(proc) then return end
 	while #proc.blockUntil > 0 do -- best feature in all of gaming
 		if proc.blockUntil[1]() then
 			-- holy shit we're free
@@ -444,13 +510,16 @@ function process.resume(proc)
 	process.current = proc
 	local ok, err = coroutine.resume(proc.thread)
 	process.current = old
-	if not ok then Kocos.printkf(Kocos.L_ERROR, "Process %d crashed: %s", proc.pid, debug.traceback(proc.thread, err)) end
-	if process.isDead(proc.pid) then return end
+	if not ok then
+		Kocos.printkf(Kocos.L_ERROR, "Process %d crashed: %s", proc.pid, debug.traceback(proc.thread, err))
+		process.raise(proc, process.SIGTRAP, debug.traceback(proc.thread, err))
+		return
+	end
+	if not process.isRunning(proc) then return end
 	if coroutine.status(proc.thread) == "dead" then
-		proc.state = "finished"
-		if proc.parent then
-			process.raise(proc.parent, process.SIGCHLD, proc.pid)
-		end
+		local exit = err
+		if type(exit) ~= "number" then exit = 0 end
+		process.terminate(proc, exit)
 	end
 end
 

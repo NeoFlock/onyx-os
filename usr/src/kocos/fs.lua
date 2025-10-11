@@ -1,12 +1,14 @@
 local fs = {}
 
 ---@alias Kocos.fs.partitionType "root"|"boot"|"user"
----@alias Kocos.fs.ftype "none"|"regular"|"directory"|"mount"
+---@alias Kocos.fs.ftype "none"|"regular"|"directory"|"mount"|"blockdev"|"chardev"
 
 fs.FTYPE_NONE = "none"
 fs.FTYPE_REGF = "regular"
 fs.FTYPE_DIR = "directory"
 fs.FTYPE_MNT = "mount"
+fs.FTYPE_BLK = "blockdev"
+fs.FTYPE_CHR = "chardev"
 
 ---@class Kocos.fs.vdrive
 ---@field address string
@@ -21,10 +23,10 @@ fs.FTYPE_MNT = "mount"
 fs.O_NONBLOCK = 1
 fs.O_CLOEXEC = 2
 
-fs.F_DUPFD = "dupfd"
-fs.F_DUPFD_CLOEXEC = "dupfd_cloexec"
-fs.F_GETFD = "getfd"
-fs.F_SETFD = "setfd"
+fs.F_GETFL = "F_GETFL"
+fs.F_SETFL = "F_SETFL"
+fs.F_SETCB = "F_SETCB"
+fs.F_NOTIF = "F_NOTIF"
 
 -- This one is triggered BEFORE the finalizer is called, thus the resource is still usable in the listener.
 fs.EV_CLOSED = "closed"
@@ -69,7 +71,7 @@ end
 ---@class Kocos.fs.partition: Kocos.fs.vdrive
 ---@field type "partition"
 ---@field getDevice fun(): Kocos.device
----@field getDeviceAddress fun(): Kocos.device
+---@field getDeviceAddress fun(): string
 ---@field getPartitionType fun(): Kocos.fs.partitionType
 ---@field getOffset fun(): integer
 ---@field isReadonly fun(): boolean
@@ -200,6 +202,10 @@ function fs.open(path, mode)
 		return nil, Kocos.errno.ENOENT
 	end
 
+	if fs.ftype(path) == fs.FTYPE_DIR then
+		return nil, Kocos.errno.EISDIR
+	end
+
 	local mnt, p = fs.resolve(path)
 
 	if not mnt.driver then
@@ -246,6 +252,39 @@ function fs.seek(fd, whence, off)
 		return fd:seek(whence, off)
 	end
 	return nil, Kocos.errno.EBADF
+end
+
+---@param fd Kocos.fs.FileDescriptor
+---@param action string
+---@return ...
+function fs.ioctl(fd, action, ...)
+	if fd.ioctl then
+		return fd:ioctl(action, ...)
+	end
+	return nil, Kocos.errno.EBADF
+end
+
+---@param fd Kocos.fs.FileDescriptor
+---@param flags integer
+function fs.setflags(fd, flags)
+	if fd.setflags then
+		return fd:setflags(flags)
+	end
+	return nil, Kocos.errno.EBADF
+end
+
+---@param fd Kocos.fs.FileDescriptor
+---@param listener function?
+function fs.setlistener(fd, listener)
+	fd.listener = listener
+end
+
+---@param fd Kocos.fs.FileDescriptor
+---@param ev string
+function fs.notify(fd, ev, ...)
+	if fd.listener then
+		fd.listener(ev, ...)
+	end
 end
 
 ---@param reader? fun(self, n: integer): string?, string?

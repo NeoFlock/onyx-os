@@ -128,6 +128,13 @@ k.registerDaemon("initd", function(cpid, action, ...)
 	end
 end)
 
+-- Debug handlers
+k.signal("SIGCHLD", function(cpid, exit)
+	local serv = serviceFromPids[cpid]
+	if not serv then return end -- command, don't care
+	Kocos.printkf(Kocos.L_WARN, "Service %s exited with %s", serv, tostring(exit))
+end)
+
 -- Launch services
 Kocos.printkf(Kocos.L_INFO, "Launching %d services", #serviceFiles)
 local allServices = {}

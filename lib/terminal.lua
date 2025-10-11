@@ -18,6 +18,18 @@ terminal.STDOUT = 1
 terminal.STDERR = 2
 terminal.STDTERM = 3
 
+--- TODO: terminfo type info
+
+----@param fd integer
+function terminal.fterminfo(fd)
+	return k.ioctl(fd, "terminfo")
+end
+
+----@param fd integer
+function terminal.isatty(fd)
+	return terminal.fterminfo(fd) ~= nil
+end
+
 function terminal.stdio()
 	return terminal.wrap(terminal.STDIN, terminal.STDOUT)
 end

@@ -44,6 +44,7 @@ local buildInfo = {
 			"usr/src/kocos/drivers.lua",
 			"usr/src/kocos/debugger.lua",
 			"usr/src/kocos/fs.lua",
+			"usr/src/kocos/devfs.lua",
 			"usr/src/kocos/process.lua",
 			"usr/src/kocos/require.lua",
 			"usr/src/kocos/exec.lua",

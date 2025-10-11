@@ -19,3 +19,5 @@ k.registerDaemon("sudod", function(cpid, action, ...)
 end)
 
 k.invokeDaemon("initd", "markComplete")
+
+k.blockUntil(k.getpid(), function() return false end)

@@ -14,3 +14,4 @@ end
 local tmpAddr = k.sysinfo().tmpAddress
 
 assert(k.mountDev("/tmp", tmpAddr))
+assert(k.mountDev("/dev", "devfs"))

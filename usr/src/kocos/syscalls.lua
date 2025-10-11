@@ -149,6 +149,108 @@ function syscalls.close(fd)
 	return true
 end
 
+---@param fd integer
+---@param whence seekwhence
+---@param off integer
+---@return integer?, string?
+function syscalls.seek(fd, whence, off)
+	if type(fd) ~= "number" then
+		return nil, errno.EINVAL
+	end
+	local proc = process.current
+	local f = proc.fds[fd]
+	if not f then return nil, errno.EBADF end
+	if f.file then
+		return Kocos.fs.seek(f.file, whence, off)
+	end
+	return nil, errno.EBADF
+end
+
+---@param fd integer
+---@param action string
+---@return ...
+function syscalls.ioctl(fd, action, ...)
+	if type(fd) ~= "number" then
+		return nil, errno.EINVAL
+	end
+	local proc = process.current
+	local f = proc.fds[fd]
+	if not f then return nil, errno.EBADF end
+	if f.file then
+		return Kocos.fs.ioctl(f.file, action, ...)
+	end
+	return nil, errno.EBADF
+end
+
+---@return integer?, string?
+function syscalls.dup(fd)
+	local res = process.current.fds[fd]
+	if not res then return nil, errno.EBADF end
+	local f = process.moveResource(process.current, res)
+	res.refc = res.refc + 1
+	return f
+end
+
+---@return boolean, string?
+function syscalls.dup2(fd, newFd)
+	local res = process.current.fds[fd]
+	if not res then return false, errno.EBADF end
+	if process.current.fds[newFd] then return false, errno.EEXIST end
+	process.current.fds[newFd] = res
+	res.refc = res.refc + 1
+	return true
+end
+
+function syscalls.fcntl(fd, action, ...)
+	if type(fd) ~= "number" then
+		return nil, errno.EINVAL
+	end
+	local proc = process.current
+	local f = proc.fds[fd]
+	if not f then return nil, errno.EBADF end
+	if action == Kocos.fs.F_SETCB then
+		---@type function?
+		local listener = ...
+		if type(listener) ~= "function" and type(listener) ~= "nil" then
+			return nil, errno.EINVAL
+		end
+		if f.file then
+			return Kocos.fs.setlistener(f.file, listener)
+		end
+		return nil, errno.EBADF
+	end
+	if action == Kocos.fs.F_GETFL then
+		return f.opts
+	end
+	if action == Kocos.fs.F_SETFL then
+		---@type integer
+		local flags = ...
+		if type(flags) ~= "number" then
+			return nil, errno.EINVAL
+		end
+		flags = math.abs(math.floor(flags))
+		if f.file then
+			f.opts = flags
+			Kocos.fs.setflags(f.file, flags)
+			return true
+		end
+		return nil, errno.EBADF
+	end
+	if action == Kocos.fs.F_NOTIF then
+		---@type string
+		local ev = ...
+		if type(ev) ~= "string" then
+			return nil, errno.EINVAL
+		end
+		if f.file then
+			Kocos.fs.notify(f.file, ...)
+			return true
+		end
+		return nil, errno.EBADF
+	end
+	return nil, errno.EINVAL
+end
+
 ---@param path string
 ---@return string[]?, string?
 function syscalls.list(path)
@@ -556,13 +658,6 @@ function syscalls.strace(pid)
 	return true
 end
 
----@param sig string
----@param handler function
-function syscalls.signal(sig, handler)
-	process.current.signals[sig] = handler
-	return true
-end
-
 ---@param gid integer
 ---@param pid? integer
 ---@return boolean, string?
@@ -681,6 +776,43 @@ function syscalls.getprocinfo(pid, ...)
 		end
 	end
 	return info
+end
+
+---@param pid integer
+---@param signal string
+function syscalls.kill(pid, signal, ...)
+	local cur = process.current
+	local target = process.allProcs[pid]
+	if not target then return nil, errno.ESRCH end
+	-- signals that are just not sendable even by root,
+	-- cuz their meaning would be violated
+	if signal == "SIGTRAP" then return nil, errno.EPERM end
+	if signal == "SIGCHLD" then return nil, errno.EPERM end
+	if signal == "SIGABRT" then return nil, errno.EPERM end
+	local allowed = process.isRoot(cur) or cur.uid == target.uid or cur.euid == target.euid or cur.euid == target.uid
+	if not allowed then
+		return nil, errno.EPERM
+	end
+	process.raise(target, signal, ...)
+	return true
+end
+
+---@param sig string
+---@param f function
+function syscalls.signal(sig, f)
+	process.current.signals[sig] = f
+	return true
+end
+
+function syscalls.abort()
+	process.raise(process.current, process.SIGABRT)
+end
+
+---@param code? integer
+function syscalls.exit(code)
+	code = code or 0
+	process.terminate(process.current, code)
+	return 0
 end
 
 Kocos.syscalls = syscalls

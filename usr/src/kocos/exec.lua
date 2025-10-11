@@ -32,13 +32,12 @@ function Kocos._default_luaExec(ev, path, f, namespace)
 			local ok, exitcode = xpcall(init, debug.traceback, table.unpack(Kocos.process.current.args))
 			if ok then
 				if type(exitcode) == "number" then
-					Kocos.process.current.exitcode = math.floor(exitcode)
+					Kocos.process.terminate(Kocos.process.current, exitcode)
 				else
-					Kocos.process.current.exitcode = 0
+					Kocos.process.terminate(Kocos.process.current, 0)
 				end
 			else
-				syscall("write", 2, tostring(exitcode) .. "\n")
-				Kocos.process.current.exitcode = 1
+				Kocos.process.raise(Kocos.process.current, "SIGTRAP", exitcode)
 			end
 		end,
 		deps = {Kocos.args.luaExecRTF},
@@ -77,10 +76,9 @@ function Kocos._default_shebang(ev, path, f, namespace)
 		init = function()
 			local ok, err = syscall("exec", cmd, args)
 			if ok then
-				return 0
+				Kocos.process.terminate(Kocos.process.current, 0)
 			else
-				syscall("write", Kocos.process.STDERR, err .. "\n")
-				return 1
+				Kocos.process.raise(Kocos.process.current, "SIGTRAP", err)
 			end
 		end,
 		deps = {},
