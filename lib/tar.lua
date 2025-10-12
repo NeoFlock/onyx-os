@@ -46,8 +46,54 @@ for t, c in pairs(tar.typeTable) do
 	tar.invTypeTable[c] = t
 end
 
-function tar.parse()
+---@param s string
+---@param i? integer
+---@param j? integer
+function tar.eraseNULs(s, i, j)
+	return s:sub(i or 1,j):gsub("\0", "")
+end
 
+---@param buf string
+---@return tar.record[]
+function tar.parse(buf)
+	---@type tar.record[]
+	local records = {}
+	local off = 0
+	while off < #buf do
+		local header = buf:sub(off+1, off+tar.sectorSize)
+		if header == tar.terminatorHeader then break end -- technically there should be 2 but idc
+		local name = tar.eraseNULs(header, 1, 100)
+		local mode = tonumber(tar.eraseNULs(header, 101, 108), 8) or 0
+		local uid = tonumber(tar.eraseNULs(header, 109, 116), 8) or 0
+		local gid = tonumber(tar.eraseNULs(header, 117, 124), 8) or 0
+		local len = tonumber(tar.eraseNULs(header, 125, 136), 8) or 0
+		local mtime = tonumber(tar.eraseNULs(header, 137, 148), 8) or 0
+		-- todo: check chksum
+		local chksum = tonumber(tar.eraseNULs(header, 149, 156), 8) or 0
+		local type = tar.invTypeTable[header:sub(157, 157)]
+		local linkedFile = tar.eraseNULs(header, 158, 257)
+		local user = tar.eraseNULs(header, 266, 297)
+		local group = tar.eraseNULs(header, 298, 328)
+		off = off + tar.sectorSize
+		local data = buf:sub(off+1, off+len)
+		off = off + math.align(len, tar.sectorSize)
+		-- we just kinda assume ustar
+		local filenamePrefix = tar.eraseNULs(header, 346, 500)
+		records[#records+1] = {
+			name = name,
+			mode = mode,
+			uid = uid,
+			gid = gid,
+			mtime = mtime,
+			type = type,
+			linkpath = linkedFile,
+			owningUserName = user,
+			owningGroupName = group,
+			data = data,
+			filenamePrefix = filenamePrefix,
+		}
+	end
+	return records
 end
 
 --- A record to use as a test
