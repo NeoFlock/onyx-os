@@ -94,7 +94,7 @@ end
 ---@param user string
 ---@param users? userdb.user[]
 function userdb.getinfo(user, users)
-	users = users or assert(userdb.parsePasswd())
+	users = users or (userdb.parsePasswd() or {})
 	for _, u in ipairs(users) do
 		if u.name == user then return u end
 	end
@@ -103,13 +103,17 @@ end
 ---@param user string
 ---@param users? userdb.user[]
 function userdb.getShell(user, users)
-	return userdb.getinfo(user, users).shell
+	local info = userdb.getinfo(user, users)
+	if not info then return "/bin/sh" end
+	return info.shell
 end
 
 ---@param user string
 ---@param users? userdb.user[]
 function userdb.getHome(user, users)
-	return userdb.getinfo(user, users).home
+	local info = userdb.getinfo(user, users)
+	if not info then return "/home" end
+	return info.home
 end
 
 -- Compute a checkpasshash-compatible hash for the password

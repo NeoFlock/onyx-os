@@ -10,7 +10,7 @@ end
 
 function shutils.getUser()
 	local uid = k.geteuid()
-	local users = assert(userdb.parsePasswd())
+	local users = userdb.parsePasswd() or {}
 	for _, user in ipairs(users) do
 		if user.uid == uid then return user.name end
 	end
@@ -87,7 +87,7 @@ function shutils.decodePromptWithVars(prompt, vars)
 					s = s .. vars[v]()
 				end
 			else
-				s = s .. vars[v]
+				s = s .. (vars[v] or "")
 			end
 		else
 			s = s .. c
@@ -144,7 +144,7 @@ shutils.BGCOLORS = {
 function shutils.promptFormatToAnsi(prompt)
 	prompt = prompt or shutils.DEFAULT_PROMPT
 	-- save some disk I/O
-	local user = shutils.getUser()
+	local user = shutils.getUser() or "guest"
 	local hostname = shutils.getHostname()
 	local cwd = shutils.getWorkingDirectory()
 	local printPath = shutils.printablePath(cwd)

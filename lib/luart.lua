@@ -16,7 +16,9 @@ if not k then
 end
 
 function print(...)
-	assert(k.write(1, table.concat({...}, " ") .. "\n"))
+	local t = {...}
+	for i=1,#t do t[i]=tostring(t[i]) end
+	assert(k.write(1, table.concat(t, " ") .. "\n"))
 end
 
 -- very useful libs!!!!

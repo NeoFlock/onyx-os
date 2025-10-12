@@ -672,6 +672,25 @@ function syscalls.chboot(addr)
 	return computer.getBootAddress()
 end
 
+---@param addr string
+---@return boolean, string?
+function syscalls.chsysroot(addr)
+	if type(addr) ~= "string" then
+		return false, errno.EINVAL
+	end
+	if process.current.euid ~= 0 then
+		return false, errno.EPERM
+	end
+	local proxy = component.proxy(addr)
+	if not proxy then return false, errno.ENODEV end
+	local newRoot = Kocos.fs.mount(proxy)
+	if not newRoot then return false, errno.ENODRIVER end
+	local oldRoot = Kocos.fs.root
+	Kocos.fs.root = newRoot
+	-- prepare to unmount
+	return true
+end
+
 ---@param hostname string?
 ---@return string?, string?
 function syscalls.hostname(hostname)
