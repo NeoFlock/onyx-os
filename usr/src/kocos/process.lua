@@ -56,6 +56,7 @@ process.STDTERM = 3
 ---@field ev_listener? function
 ---@field reEnterAs? Kocos.process
 ---@field executionDeadline? number
+---@field proclocal table
 
 ---@type table<integer, Kocos.process>
 process.allProcs = {}
@@ -109,6 +110,7 @@ function process.create(thread, namespace, uid, gid)
 		cwd = "/",
 		exitcode = 0,
 		blockUntil = {},
+		proclocal = {},
 	}
 
 

@@ -19,4 +19,6 @@ function print(...)
 	assert(k.write(1, table.concat({...}, " ") .. "\n"))
 end
 
+-- very useful libs!!!!
 require("os")
+require("io")

@@ -4,6 +4,13 @@ local readline = require("readline")
 local shutils = require("shutils")
 local userdb = require("userdb")
 
+local args = {...}
+
+if args[1] == "-c" then
+	print(args[2])
+	return
+end
+
 print("\x1b[36mAsh\x1b[32m v0.0.1\x1b[0m")
 local history = {}
 while true do

@@ -915,6 +915,10 @@ function syscalls.getprocinfo(pid, ...)
 	return info
 end
 
+function syscalls.proclocal()
+	return process.current.proclocal
+end
+
 ---@param pid integer
 ---@param signal string
 function syscalls.kill(pid, signal, ...)
