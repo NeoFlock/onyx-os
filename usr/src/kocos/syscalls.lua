@@ -82,7 +82,7 @@ function syscalls.mountDev(path, addr)
 	if Kocos.fs.ftype(path) ~= Kocos.fs.FTYPE_DIR then
 		return nil, errno.ENOTDIR
 	end
-	local parentmnt, p = Kocos.fs.resolve(path)
+	local parentmnt, p = Kocos.fs.resolve(path, true)
 	local dev = component.proxy(addr)
 	if not dev then return nil, errno.ENODEV end
 	local mnt = Kocos.fs.mount(dev)
@@ -90,6 +90,23 @@ function syscalls.mountDev(path, addr)
 		return nil, errno.ENODRIVER
 	end
 	parentmnt.submounts[p] = mnt
+	return true
+end
+
+---@param path string
+---@return boolean, string?
+function syscalls.unmount(path)
+	if type(path) ~= "string" then
+		return false, errno.EINVAL
+	end
+	path = process.resolve(process.current, path)
+	local parentmnt, p = Kocos.fs.resolve(path, true)
+	local mnt = parentmnt.submounts[p]
+	if not mnt then
+		return false, errno.EISDIR
+	end
+	Kocos.fs.unmount(mnt)
+	parentmnt.submounts[p] = nil
 	return true
 end
 
@@ -621,7 +638,20 @@ function syscalls.chdir(dir)
 	end
 	if dir == "." then return process.current.cwd end
 	dir = process.resolve(process.current, dir)
+	dir = Kocos.fs.fromRoot(dir, process.current.root)
 	process.current.cwd = dir
+	return dir
+end
+
+---@param dir string
+---@return string?, string?
+function syscalls.chroot(dir)
+	if type(dir) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	if dir == "." then return process.current.cwd end
+	dir = process.resolve(process.current, dir)
+	process.current.root = dir
 	return dir
 end
 
@@ -687,7 +717,7 @@ function syscalls.chsysroot(addr)
 	if not newRoot then return false, errno.ENODRIVER end
 	local oldRoot = Kocos.fs.root
 	Kocos.fs.root = newRoot
-	-- prepare to unmount
+	Kocos.fs.unmount(oldRoot)
 	return true
 end
 

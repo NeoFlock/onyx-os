@@ -49,6 +49,7 @@ process.STDTERM = 3
 ---@field parent? Kocos.process
 ---@field stopped boolean
 ---@field cwd string
+---@field root string
 ---@field exe? string
 ---@field exitcode integer
 ---@field tracer? Kocos.process
@@ -108,6 +109,7 @@ function process.create(thread, namespace, uid, gid)
 		stopped = false,
 		state = "running",
 		cwd = "/",
+		root = "/",
 		exitcode = 0,
 		blockUntil = {},
 		proclocal = {},
@@ -140,6 +142,7 @@ function process.fork(proc, func)
 	end
 	forked.stopped = proc.stopped
 	forked.cwd = proc.cwd
+	forked.root = proc.root
 	forked.exitcode = proc.exitcode
 	forked.tracer = proc.tracer
 	forked.parent = proc
@@ -355,9 +358,9 @@ end
 ---@param path string
 function process.resolve(proc, path)
 	if path:sub(1,1) == "/" then
-		return Kocos.fs.canonical(path)
+		return Kocos.fs.join(proc.root, Kocos.fs.canonical(path))
 	end
-	return Kocos.fs.join(proc.cwd, path)
+	return Kocos.fs.join(proc.root, proc.cwd, path)
 end
 
 ---@param lib Kocos.process.sharedLib

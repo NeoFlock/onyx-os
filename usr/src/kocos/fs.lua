@@ -130,6 +130,34 @@ function fs.mount(dev)
 	end
 end
 
+---@param mountpoint Kocos.fs.mountpoint
+function fs.unmount(mountpoint)
+	if not mountpoint.fsid then return end
+	mountpoint.fsid = nil
+	mountpoint.mountc = mountpoint.mountc - 1
+	if mountpoint.mountc > 0 then return end
+	fs.allMounts[mountpoint.dev.address] = nil
+	for _, mount in pairs(mountpoint.submounts) do
+		fs.unmount(mount)
+	end
+	if mountpoint.driver then
+		mountpoint.driver("FS-unmount", mountpoint.driverData)
+	end
+end
+
+---@param mountpoint Kocos.fs.mountpoint
+function fs.syncMount(mountpoint)
+	if mountpoint.driver then
+		mountpoint.driver("FS-syncAll", mountpoint.driverData)
+	end
+end
+
+function fs.sync()
+	for _, mount in pairs(fs.allMounts) do
+		fs.syncMount(mount)
+	end
+end
+
 ---@param path string
 function fs.canonical(path)
 	if path:sub(1, 1) == "/" then path = path:sub(2) end
@@ -152,6 +180,15 @@ end
 
 function fs.join(...)
 	return fs.canonical(table.concat({...}, "/"))
+end
+
+---@param path string
+---@param root string
+function fs.fromRoot(path, root)
+	if path == root then
+		return "/"
+	end
+	return path:sub(#root+1)
 end
 
 ---@param path string
