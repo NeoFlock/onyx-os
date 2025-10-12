@@ -67,6 +67,7 @@ if terminal.isatty(terminal.STDOUT) then
 				end
 			end
 		end
+		if d[i] == f then d[i] = ff end
 	end
 end
 
