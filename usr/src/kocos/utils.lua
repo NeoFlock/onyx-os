@@ -132,6 +132,19 @@ function table.serialize(val, refs, colorinfo)
 	end
 end
 
+---@generic T
+---@param t T[]
+---@param v T
+---@return boolean, integer?
+function table.contains(t, v)
+	for i, x in ipairs(t) do
+		if v == x then
+			return true, i
+		end
+	end
+	return false
+end
+
 ---@param memory integer
 ---@param spacing? string
 function string.memformat(memory, spacing)
@@ -152,14 +165,19 @@ end
 ---@param sep string
 ---@return string[]
 function string.split(inputstr, sep)
-  if sep == nil then
-    sep = "%s"
-  end
-  local t = {}
-  for str in string.gmatch(inputstr, "([^"..sep.."]*)") do
-    table.insert(t, str)
-  end
-  return t
+	if sep == nil then
+		sep = "%s"
+	end
+	if sep == "" then
+		sep = "."
+	else
+		sep = "[^" .. sep .. "]*"
+	end
+	local t = {}
+	for str in string.gmatch(inputstr, "("..sep..")") do
+		table.insert(t, str)
+	end
+	return t
 end
 
 ---@param s string

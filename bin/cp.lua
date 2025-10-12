@@ -5,7 +5,7 @@ local srcPath, destPath = ...
 local blockSize = 4096
 
 local src = assert(k.open(srcPath, "r"))
-local dest = assert(k.open(destPath, "r"))
+local dest = assert(k.open(destPath, "w"))
 
 while true do
 	local data, err = k.read(src, blockSize)

@@ -55,6 +55,7 @@ process.STDTERM = 3
 ---@field daemon? string
 ---@field ev_listener? function
 ---@field reEnterAs? Kocos.process
+---@field executionDeadline? number
 
 ---@type table<integer, Kocos.process>
 process.allProcs = {}
@@ -515,7 +516,9 @@ function process.resume(proc)
 	if coroutine.status(proc.thread) ~= "suspended" then return end
 	local old = process.current
 	process.current = proc.reEnterAs or proc
+	proc.executionDeadline = computer.uptime() + 0.2
 	local ok, err = coroutine.resume(proc.thread)
+	-- TODO: compute how "nice" the value is
 	proc.reEnterAs = process.current
 	if proc.reEnterAs == proc then proc.reEnterAs = nil end
 	process.current = old

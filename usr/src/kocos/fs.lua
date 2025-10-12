@@ -457,7 +457,7 @@ function fs._defaultManagedFS(req, ...)
 		return {
 			deviceAddress = dev.address,
 			deviceType = dev.type,
-			size = dev.size(path),
+			size = dev.size(path) or 0, -- dirs are 0-sized lol
 			createdAt = 0,
 			lastModified = dev.lastModified(path),
 			diskUsed = dev.spaceUsed(),

@@ -36,9 +36,25 @@ local function computeDeviceFiles()
 	return f
 end
 
+---@return string?
+local function devfsPathToDev(path)
+	if string.startswith(path, "components/") then
+		for addr in component.list() do
+			if path == "components/" .. addr then
+				return addr
+			end
+		end
+		return
+	end
+	for p, dev in pairs(computeDeviceFiles()) do
+		if p == path then return dev end
+	end
+end
+
 ---@param dev string
+---@param mode "r"|"a"|"w"
 ---@return Kocos.fs.FileDescriptor?, string?
-local function devfsDevToFD(dev)
+local function devfsDevToFD(dev, mode)
 	local t = component.type(dev)
 	if t == "tunnel" then
 		local s, err = Kocos.net.socket("AF_TUNNEL", "dgram")
@@ -50,13 +66,29 @@ local function devfsDevToFD(dev)
 		return {
 			flags = 1,
 			write = function(_, data)
+				if mode == "r" then return false, Kocos.errno.EBADF end
 				return Kocos.net.write(s, data)
 			end,
 			read = function(_, len)
+				if mode ~= "r" then return nil, Kocos.errno.EBADF end
 				return Kocos.net.read(s, len)
 			end,
 			close = function()
 				Kocos.net.close(s)
+			end,
+		}
+	end
+	if t == "serial" then
+		---@type Kocos.fs.FileDescriptor
+		return {
+			flags = 1,
+			write = function(_, data)
+				if mode == "r" then return false, Kocos.errno.EBADF end
+				return component.invoke(dev, "write", data)
+			end,
+			read = function(_, len)
+				if mode ~= "r" then return nil, Kocos.errno.EBADF end
+				return component.invoke(dev, "read", len)
 			end,
 		}
 	end
@@ -147,10 +179,9 @@ local function devfsMakeFD(path, mode)
 			flags = 0,
 		}
 	end
-	for f, dev in pairs(computeDeviceFiles()) do
-		if path == f then
-			return devfsDevToFD(dev)
-		end
+	local dev = devfsPathToDev(path)
+	if dev then
+		return devfsDevToFD(dev, mode)
 	end
 	return nil, errno.ENOENT
 end
@@ -239,13 +270,36 @@ function Kocos._default_devfs(req, ...)
 	if req == "FS-stat" then
 		---@type unknown, string
 		local _, path = ...
-		---@type integer
-		local size = 0 -- TODO: make it correct
+		local dev = devfsPathToDev(path)
+		if dev then
+			local ctype = component.type(dev)
+			---@type integer
+			local size = 0 -- TODO: make it correct
+			local used = 0
+			if ctype == "filesystem" then
+				used = component.invoke(dev, "spaceUsed")
+				size = component.invoke(dev, "spaceTotal")
+			elseif ctype == "drive" or ctype == "partition" then
+				size = component.invoke(dev, "getCapacity")
+			end
+			---@type Kocos.fs.stat
+			return {
+				deviceAddress = dev,
+				deviceType = ctype,
+				size = size,
+				createdAt = 0,
+				lastModified = 0,
+				diskUsed = used,
+				diskTotal = size,
+				inode = math.random(0, 2^32-1),
+				perms = 0,
+			}
+		end
 		---@type Kocos.fs.stat
 		return {
 			deviceAddress = "devfs",
 			deviceType = "devfs",
-			size = size,
+			size = 0,
 			createdAt = 0,
 			lastModified = 0,
 			diskUsed = 0,

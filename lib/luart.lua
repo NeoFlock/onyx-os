@@ -18,3 +18,5 @@ end
 function print(...)
 	assert(k.write(1, table.concat({...}, " ") .. "\n"))
 end
+
+require("os")

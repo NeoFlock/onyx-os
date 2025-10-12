@@ -4,14 +4,18 @@ local terminal = require("terminal")
 ---@param fd? integer
 ---@param outfd? integer
 ---@param hidden? string 
+---@param history? fun(idx: integer): string?
 --- If hidden is nil, input is shown as normal.
 --- If hidden is an empty string, no text is printed (except newlines and Ctrl-D or Ctrl-C)
 --- If hidden is a non-empty string, every character is replaced with hidden.
-return function(fd, outfd, hidden)
+return function(fd, outfd, hidden, history)
 	fd = fd or terminal.STDIN
 	outfd = outfd or terminal.STDOUT
 	-- this function executes in the context of the current process
 	local buf = ""
+	-- when going back to historyIndex=0
+	local tmpbuf = ""
+	local historyIndex = 0
 	local term = terminal.wrap(fd, outfd)
 	term:showCursor()
 	local ex, ey = term:getCursor()
@@ -105,6 +109,36 @@ return function(fd, outfd, hidden)
 					cursor = cursor + 1
 					term:write(buf:sub(cursor, cursor))
 					term:showCursor()
+				end
+			elseif code == keyboard.keys.up and history then
+				local h = history(historyIndex+1)
+				if h then
+					if historyIndex == 0 then
+						tmpbuf = buf
+					end
+					historyIndex = historyIndex+1
+					term:setCursor(ex, ey)
+					term:clearLineAfterCursor()
+					buf = h
+					cursor = #h
+					term:write(buf)
+				end
+			elseif code == keyboard.keys.down and history and historyIndex > 0 then
+				if historyIndex == 1 then
+					historyIndex = 0
+					buf = tmpbuf
+					cursor = #buf
+					term:setCursor(ex, ey)
+					term:clearLineAfterCursor()
+					term:write(buf)
+				else
+					local h = history(historyIndex-1)
+					historyIndex = historyIndex - 1
+					buf = h or ""
+					cursor = #buf
+					term:setCursor(ex, ey)
+					term:clearLineAfterCursor()
+					term:write(buf)
 				end
 			elseif keyboard.isPrintable(char) then
 				-- TODO: ANSI escapes and stuff

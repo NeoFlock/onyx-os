@@ -5,16 +5,18 @@ local shutils = require("shutils")
 local userdb = require("userdb")
 
 print("\x1b[36mAsh\x1b[32m v0.0.1\x1b[0m")
+local history = {}
 while true do
-	local cwd = shutils.printablePath(shutils.getWorkingDirectory())
-	k.write(1, string.format("\x1b[36m%s\x1b[0m@\x1b[33m%s\x1b[0m ", shutils.getUser(), shutils.getHostname()))
-	k.write(1, "\x1b[32m")
-	k.write(1, cwd)
-	k.write(1, " > ")
-	k.write(1, "\x1b[0m")
-	local line = readline()
+	k.write(1, shutils.promptFormatToAnsi(os.getenv("PS1")))
+	k.write(1, "\x1b[0m ")
+	local line = readline(nil, nil, nil, function(i) return history[i] end)
 	if not line then return end
-	local args = string.split(line:sub(1, -2), " ")
+	local l = line:sub(1, -2)
+	-- de-duplication
+	if history[1] ~= l then
+		table.insert(history, 1, l)
+	end
+	local args = string.split(l, " ")
 	if #args > 0 then
 		local cmd = table.remove(args, 1)
 		if cmd == "exit" then
@@ -23,6 +25,8 @@ while true do
 			assert(k.chdir(args[1] or userdb.getHome(shutils.getUser())))
 		elseif cmd == "which" then
 			print(shutils.search(args[1]) or "no such command")
+		elseif cmd == "setprompt" then
+			os.setenv("PS1", table.concat(args, " "))
 		else
 			local p = shutils.search(cmd)
 			if p then

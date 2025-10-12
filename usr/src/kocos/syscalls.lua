@@ -959,6 +959,11 @@ Kocos.syscalls = syscalls
 ---@return ...
 function syscall(sysname, ...)
 	local cur = process.current
+
+	if computer.uptime() > cur.executionDeadline then
+		coroutine.yield()
+	end
+
 	if process.isDead(cur.pid) then return nil, errno.ECHILD end
 	if not syscalls[sysname] then return nil, errno.ENOSYS end
 	if cur.tracer then

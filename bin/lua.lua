@@ -10,10 +10,15 @@ local function showVersionInfo()
 end
 
 local function interactive()
+	local history = {}
 	while true do
 		k.write(1, "\x1b[34mlua>\x1b[0m ")
-		local code = readline()
+		local code = readline(nil, nil, nil, function(i) return history[i] end)
 		if not code then break end
+		local c = code:sub(1, -2)
+		if history[1] ~= c then
+			table.insert(history, 1, c)
+		end
 		if code:sub(1, 1) == "=" then
 			code = "return " .. code:sub(2)
 		end

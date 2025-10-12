@@ -148,6 +148,9 @@ do
 		return cfields(address)
 	end
 
+	---@param address string
+	---@param method string
+	---@return ...
 	function component.invoke(address, method, ...)
 		checkArg(1, address, "string")
 		checkArg(2, method, "string")
