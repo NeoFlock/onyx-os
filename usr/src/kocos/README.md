@@ -181,12 +181,23 @@ A sequence of `;`-separated numbers. If none are present, a `0` is added implici
 - `CSI 4;x;y U`, which will perform `gpu.get(x, y)`, and will respond with `CSI c;f;b R`, where c is the codepoint of the character, f is the foreground and b is the background
 
 ### VRAM buffers (CSI)
-> TODO: VRAM buffers
+> Great for everything from multiplexing to 3D graphics
 
 - `CSI 1 v`, responds like DSR, except the `x` stores the free VRAM memory and `y` stores the total VRAM memory
+- `CSI 2;w;h v`, allocates a new VRAM buffer with a resolution of `w`x`h`. Responds like DSR, if x being the buffer index, or 0 if there is an error, and y being the VRAM left after the allocation.
+- `CSI 0n`, responds like DSR, except `x` stores the active screen buffer and `y` stores how many buffers are available
+- `CSI 1n`, responds like DSR, except with any amount of numbers separated by `;` (including none, which would just be `CSI R`). Each number is a VRAM buffer index.
+- `CSI 3;b v`, will free buffer `b`
+- `CSI 3;0 v`, will free the current active buffer and switch back to the real screen.
+- `CSI 3 v`, will free all VRAM buffers and switch back to real screen. (Great for shells!)
+- `CSI 4;d;x;y;w;h;s;a;b v`, will perform a `gpu.bitblt(d,x,y,w,h,s,a,b)`, with defaults just like `bitblt`'s. This copies a region from one buffer to another. It is also used to copy to and from the screen.
+- `CSI 5;x v`, switch VRAM buffer to `x` (0 for screen, x defaults to 0)
 
 These escapes may not always be supported (ie. on terminals backed by other hardware or on older versions of OC), and thus using them may cause issues.
-It is possible to check by seeing if the total VRAM memory is above 0. Terminals should respond with 0 if it isn't available.
+It is possible to check by seeing if the total VRAM memory is above 0.
+
+If VRAM buffers are supported, resolution is in terms of the **active buffer**.
+Changing resolution for VRAM buffers is not allowed, you should allocate a new buffer instead. Attempts to do so anyways should be ignored.
 
 ### OSC
 
