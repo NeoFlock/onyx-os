@@ -998,7 +998,7 @@ Kocos.syscalls = syscalls
 function syscall(sysname, ...)
 	local cur = process.current
 
-	if computer.uptime() > cur.executionDeadline then
+	if cur.executionDeadline and computer.uptime() > cur.executionDeadline then
 		coroutine.yield()
 	end
 
