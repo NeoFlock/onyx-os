@@ -52,7 +52,7 @@ local buildInfo = {
 			"usr/src/kocos/syscalls.lua",
 			"usr/src/kocos/boot.lua",
 		},
-		out = "kernel",
+		out = "boot/vmkocos",
 		deps = {},
 	},
 }

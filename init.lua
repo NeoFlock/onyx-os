@@ -35,7 +35,7 @@ if kargs.debugger then
 end
 
 local kernelCode = {}
-local kernelF = assert(component.invoke(fs, "open", "kernel"))
+local kernelF = assert(component.invoke(fs, "open", "boot/vmkocos"))
 
 while true do
 	local code, err = component.invoke(fs, "read", kernelF, math.huge)
