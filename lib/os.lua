@@ -32,6 +32,7 @@ end
 
 os.exit = k.exit
 os.exec = k.exec
+os.fork = k.fork
 
 ---@param command string
 function os.execute(command)
