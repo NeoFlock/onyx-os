@@ -789,10 +789,10 @@ function syscalls.seteuid(uid, pid)
 	local cur = process.current
 	local target = process.allProcs[pid or cur.pid]
 	if not target then return false, errno.ESRCH end
-	if not process.isDecendantOf(target, cur) then
+	if not process.isDecendantOf(target, cur) and not process.isRoot(cur) then
 		return false, errno.EPERM
 	end
-	if uid == 0 then
+	if uid == 0 and not process.isRoot(cur) then
 		target.euid = target.uid
 		return true
 	end
@@ -807,10 +807,10 @@ function syscalls.setegid(gid, pid)
 	local cur = process.current
 	local target = process.allProcs[pid or cur.pid]
 	if not target then return false, errno.ESRCH end
-	if not process.isDecendantOf(target, cur) then
+	if not process.isDecendantOf(target, cur) and not process.isRoot(cur) then
 		return false, errno.EPERM
 	end
-	if gid == 0 then
+	if gid == 0 and not process.isRoot(cur) then
 		target.egid = target.gid
 		return true
 	end

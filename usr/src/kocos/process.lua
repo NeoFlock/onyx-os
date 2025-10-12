@@ -54,6 +54,7 @@ process.STDTERM = 3
 ---@field tracer? Kocos.process
 ---@field daemon? string
 ---@field ev_listener? function
+---@field reEnterAs? Kocos.process
 
 ---@type table<integer, Kocos.process>
 process.allProcs = {}
@@ -513,8 +514,10 @@ function process.resume(proc)
 	end
 	if coroutine.status(proc.thread) ~= "suspended" then return end
 	local old = process.current
-	process.current = proc
+	process.current = proc.reEnterAs or proc
 	local ok, err = coroutine.resume(proc.thread)
+	proc.reEnterAs = process.current
+	if proc.reEnterAs == proc then proc.reEnterAs = nil end
 	process.current = old
 	if not ok then
 		Kocos.printkf(Kocos.L_ERROR, "Process %d crashed: %s", proc.pid, debug.traceback(proc.thread, err))

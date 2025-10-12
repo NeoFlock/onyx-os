@@ -59,6 +59,7 @@ assert(k.mkdriver(function(ev, ...)
 				end
 			end,
 			write = function(_, data)
+				if #data == 0 then return true end -- trust me, this is a good thing
 				return k.cinvoke(s.device, "send", data)
 			end,
 			close = function()

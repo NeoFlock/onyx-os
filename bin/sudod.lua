@@ -9,8 +9,8 @@ k.registerDaemon("sudod", function(cpid, action, ...)
 		local uinfo = userdb.getinfo(user)
 		if not uinfo then return false, "auth failed" end
 		if userdb.checkpass(user, password) then
-			k.seteuid(uinfo.uid, cpid)
-			k.setegid(uinfo.gid, cpid)
+			assert(k.seteuid(uinfo.uid, cpid))
+			assert(k.setegid(uinfo.gid, cpid))
 			return true
 		end
 		return false, "auth failed"

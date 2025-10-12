@@ -275,7 +275,7 @@ function package.searchpath(name, path, sep, rep)
 		local toCheck = p:gsub("%?", name)
 		local fd = syscall("open", toCheck, "r")
 		if fd then
-			syscall("close", fd)
+			assert(syscall("close", fd))
 			return toCheck
 		end
 	end
