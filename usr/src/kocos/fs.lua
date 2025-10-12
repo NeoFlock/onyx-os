@@ -331,8 +331,11 @@ function fs.fd_from_rwf(reader, writer, finalizer, ioctl)
 end
 
 ---@param path string
+---@param perms integer
+---@param uid integer
+---@param gid integer
 ---@return boolean?, string?
-function fs.touch(path)
+function fs.touch(path, perms, uid, gid)
 	local m, p = fs.resolve(path)
 	if not m.driver then
 		return nil, Kocos.errno.EHWPOISON
@@ -341,12 +344,15 @@ function fs.touch(path)
 		return nil, Kocos.errno.EISDIR
 	end
 	-- still modifies mtime
-	return m.driver("FS-touch", m.driverData, p)
+	return m.driver("FS-touch", m.driverData, p, perms, uid, gid)
 end
 
 ---@param path string
+---@param perms integer
+---@param uid integer
+---@param gid integer
 ---@return boolean?, string?
-function fs.mkdir(path)
+function fs.mkdir(path, perms, uid, gid)
 	local m, p = fs.resolve(path)
 	if not m.driver then
 		return nil, Kocos.errno.EHWPOISON
@@ -355,7 +361,7 @@ function fs.mkdir(path)
 		return nil, Kocos.errno.EEXIST
 	end
 	-- still modifies mtime
-	return m.driver("FS-mkdir", m.driverData, p)
+	return m.driver("FS-mkdir", m.driverData, p, perms, uid, gid)
 end
 
 ---@param path string
@@ -438,16 +444,16 @@ function fs._defaultManagedFS(req, ...)
 		return fs.FTYPE_REGF
 	end
 	if req == "FS-touch" then
-		---@type Kocos.device, string
-		local dev, path = ...
-		local f, err = dev.open(path, "w")
+		---@type Kocos.device, string, integer, integer, integer
+		local dev, path, perms, uid, gid = ...
+		local f, err = dev.open(path, dev.exists(path) and "w" or "a")
 		if not f then return false, err end
 		dev.close(f)
 		return true
 	end
 	if req == "FS-mkdir" then
-		---@type Kocos.device, string
-		local dev, path = ...
+		---@type Kocos.device, string, integer, integer, integer
+		local dev, path, perms, uid, gid = ...
 		return dev.makeDirectory(path)
 	end
 	if req == "FS-stat" then

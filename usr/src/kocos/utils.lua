@@ -1,3 +1,6 @@
+---@generic T
+---@param t T
+---@return T
 function table.copy(t)
 	if type(t) == "table" then
 		local nt = {}
@@ -65,6 +68,21 @@ function table.luaglobals(src)
 	namespace.package.loaded = {} -- fixed SO MUCH BS
 
 	return namespace
+end
+
+---@generic T
+---@param t T[]
+---@return T[]
+--- Mutates.
+function table.reverse(t)
+	local mid = math.ceil(#t/2)
+	for i=1,mid do
+		local j = #t - i + 1
+		local tmp = t[i]
+		t[i] = t[j]
+		t[j] = tmp
+	end
+	return t
 end
 
 local function isGoodKey(s)
@@ -227,6 +245,13 @@ function math.map(x, min1, max1, min2, max2)
     return min2 + ((x - min1) / (max1 - min1)) * (max2 - min2)
 end
 
+---@param x number
+---@param alignment number
+function math.align(x, alignment)
+	local off = (alignment - (x % alignment)) % alignment
+	return x + off, off
+end
+
 -- Take in a binary and turn it into a GUID
 -- Bin can be above 16 bytes.
 -- If bin is less than 16 bytes, it is padded with 0s
@@ -339,8 +364,8 @@ end
 ---@param data string
 ---@return boolean?, string?
 function writefile(filename, data)
-	local fd, err = syscall("open", filename, "r")
-	if err then return nil, err end
+	local fd, err = syscall("open", filename, "w")
+	if not fd then return nil, err end
 
 	local ok, err2 = syscall("write", fd, data)
 	if not ok then

@@ -29,13 +29,43 @@ function syscalls.open(path, mode)
 end
 
 ---@param path string
+---@param perms integer
 ---@return boolean?, string?
-function syscalls.mkdir(path)
+function syscalls.touch(path, perms)
+	if type(path) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	if type(perms) ~= "number" then
+		return nil, errno.EINVAL
+	end
+	perms = math.floor(perms)
+	path = process.resolve(process.current, path)
+	return Kocos.fs.touch(path, perms, process.current.uid, process.current.gid)
+end
+
+---@param path string
+---@param perms integer
+---@return boolean?, string?
+function syscalls.mkdir(path, perms)
+	if type(path) ~= "string" then
+		return nil, errno.EINVAL
+	end
+	if type(perms) ~= "integer" then
+		return nil, errno.EINVAL
+	end
+	perms = math.floor(perms)
+	path = process.resolve(process.current, path)
+	return Kocos.fs.mkdir(path, perms, process.current.uid, process.current.gid)
+end
+
+---@param path string
+---@return boolean?, string?
+function syscalls.remove(path)
 	if type(path) ~= "string" then
 		return nil, errno.EINVAL
 	end
 	path = process.resolve(process.current, path)
-	return Kocos.fs.mkdir(path)
+	return Kocos.fs.remove(path)
 end
 
 ---@param path string
@@ -950,6 +980,10 @@ function syscalls.mklistener(listener)
 	cur.ev_listener = listener
 	Kocos.event.listen(listener)
 	return true
+end
+
+function syscalls.errnos()
+	return table.copy(Kocos.errno)
 end
 
 Kocos.syscalls = syscalls

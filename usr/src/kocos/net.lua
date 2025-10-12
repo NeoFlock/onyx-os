@@ -140,7 +140,6 @@ function net.connect(socket, addrinfo)
 		return nil, errno.EISCONN
 	end
 	if socket.connect then
-		socket.state = "connecting"
 		return socket:connect(addrinfo)
 	end
 	return nil, errno.EBADF
@@ -154,7 +153,6 @@ function net.listen(socket, addrinfo)
 		return false, errno.EISCONN
 	end
 	if socket.listen then
-		socket.state = "listening"
 		return socket:listen(addrinfo)
 	end
 	return false, errno.EBADF
