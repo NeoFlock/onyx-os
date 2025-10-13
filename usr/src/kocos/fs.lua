@@ -188,6 +188,9 @@ function fs.fromRoot(path, root)
 	if path == root then
 		return "/"
 	end
+	if root == "/" then
+		return path
+	end
 	return path:sub(#root+1)
 end
 
