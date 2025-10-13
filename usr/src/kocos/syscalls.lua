@@ -50,7 +50,7 @@ function syscalls.mkdir(path, perms)
 	if type(path) ~= "string" then
 		return nil, errno.EINVAL
 	end
-	if type(perms) ~= "integer" then
+	if type(perms) ~= "number" then
 		return nil, errno.EINVAL
 	end
 	perms = math.floor(perms)
