@@ -3,7 +3,8 @@
 assert(Kocos, "not running in kernel address space")
 
 local kBootTime = k.uptime()
-local predTime = kBootTime
+local bootServiceTime = kBootTime
+local prelTime = kBootTime
 local cmdTime = kBootTime
 local lastCmdTime = kBootTime
 Kocos.printkf(Kocos.L_INFO, "Reached init in %s", string.boottimefmt(kBootTime))
@@ -17,8 +18,6 @@ local addrs = {
 	user = table.luaglobals(),
 	cmd = table.luaglobals(),
 }
-
--- Setup daemon
 
 ---@class onyx.init.service
 ---@field name string
@@ -93,7 +92,7 @@ for _, cmd in ipairs(preludes) do
 	end))
 	assert(k.waitpid(child))
 end
-predTime = k.uptime()
+prelTime = k.uptime()
 
 -- Load services (likely out of ramfs)
 local serviceFiles = assert(k.list("/etc/services"))
@@ -131,7 +130,7 @@ k.registerDaemon("initd", function(cpid, action, ...)
 		return {
 			bios = Kocos.biosBootTime,
 			kernel = kBootTime,
-			prelude = predTime,
+			prelude = prelTime,
 			allServices = cmdTime,
 			currentCommand = lastCmdTime,
 		}
