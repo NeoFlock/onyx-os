@@ -65,8 +65,10 @@ do
 
 	---@param vdev Kocos.vdevice
 	function component.add(vdev)
+		if component.type(vdev.address) then return end
 		vComponents[vdev.address] = vdev
 		Kocos.event.push("component_added", vdev.address, vdev.type)
+		return vdev.address
 	end
 
 	---@param address string

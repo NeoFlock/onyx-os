@@ -563,6 +563,47 @@ function syscalls.caddress(shortform, filter, exact)
 	return nil, errno.ENODEV
 end
 
+---@param dev Kocos.vdevice
+function syscalls.cadd(dev)
+	if not process.isRoot(process.current) then
+		return false, errno.EPERM
+	end
+	if component.type(dev.address) then
+		return false, errno.EADDRINUSE
+	end
+	component.add(dev)
+	return true
+end
+
+---@param address string
+function syscalls.cremove(address)
+	if not process.isRoot(process.current) then
+		return false, errno.EPERM
+	end
+	if not component.isVirtual(address) then
+		return false, errno.ENODEV
+	end
+	component.remove(address)
+	return true
+end
+
+---@param image Kocos.ramfs.node
+---@param label string?
+---@param readonly boolean
+---@param addr string?
+---@return string?, string?
+function syscalls.cramfs(image, label, readonly, addr)
+	if not process.isRoot(process.current) then
+		return nil, errno.EPERM
+	end
+	return Kocos.addRamfsComponent({
+		label = label,
+		readonly = readonly,
+		fds = {},
+		image = image,
+	}, addr)
+end
+
 function syscalls.cmethods(addr)
 	return component.methods(addr)
 end

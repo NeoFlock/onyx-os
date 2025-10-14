@@ -4,10 +4,11 @@ local ensureExists = {
 	"/tmp",
 	"/dev",
 	"/mnt",
+	"/media",
 }
 for _, f in ipairs(ensureExists) do
 	if not k.exists(f) then
-		assert(k.mkdir(f))
+		assert(k.mkdir(f, 2^16-1))
 	end
 end
 

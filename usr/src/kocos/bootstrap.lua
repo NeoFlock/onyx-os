@@ -10,7 +10,7 @@ local argv = {...}
 ---@class Kocos.config
 ---@field debugger? string
 ---@field root? string
----@field ramfs? string
+---@field ramfs? Kocos.ramfs
 ---@field noOcelotLog? boolean
 ---@field minLog? integer
 ---@field pollInterval? number
