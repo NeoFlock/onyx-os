@@ -1,3 +1,5 @@
+do
+
 ---@class Kocos.ramfs.node
 ---@field fileData string?
 ---@field items table<string, Kocos.ramfs.node>?
@@ -68,7 +70,10 @@ function Kocos.addRamfsComponent(ramfs, address)
 			open = {direct = true},
 			write = {direct = true},
 			read = {direct = true},
+			seek = {direct = true},
 			close = {direct = true},
+			remove = {direct = true},
+			rename = {direct = true},
 		},
 		invoke = function(method, ...)
 			if method == "spaceUsed" then
@@ -183,13 +188,32 @@ function Kocos.addRamfsComponent(ramfs, address)
 				f.offset = f.offset + #data
 				return true
 			end
+			if method == "seek" then
+				local fd, whence, off = ...
+				whence = whence or "cur"
+				off = 0
+				off = math.floor(off)
+				local f = ramfs.fds[fd]
+				if not f then return false, "bad file" end
+				local len = #f.node.fileData
+				if whence == "set" then
+					f.offset = off
+				elseif whence == "cur" then
+					f.offset = f.offset + off
+				elseif whence == "end" then
+					f.offset = len - f.offset
+				end
+				f.offset = math.clamp(f.offset, 0, len)
+				return f.offset
+			end
 			if method == "read" then
 				local fd, len = ...
 				local f = ramfs.fds[fd]
 				if not f then return nil, "bad file" end
 				if f.mode ~= "r" then return nil, "bad file" end
 				local buf = f.node.fileData or ""
-				len = len or math.min(#buf - f.offset)
+				len = len or #buf
+				len = math.min(len, #buf - f.offset)
 				if f.offset >= #buf then
 					return
 				end
@@ -201,6 +225,20 @@ function Kocos.addRamfsComponent(ramfs, address)
 				ramfs.fds[(...)] = nil
 				return
 			end
+			if method == "remove" then
+				local p = ...
+				local parent, name = processParentPath(ramfs, p)
+				if not parent then return false, p end
+				if parent.items[name] then
+					parent.items[name] = nil
+				end
+				return true
+			end
+			if method == "rename" then
+				return false, "unsupported"
+			end
 		end,
 	}
+end
+
 end

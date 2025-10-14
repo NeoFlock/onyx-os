@@ -2,6 +2,8 @@
 
 -- TODO: implement fully
 
+local ramfs = require("ramfs")
+
 local importantFiles = {
 	"/bin",
 	"/boot",
@@ -15,16 +17,20 @@ local importantFiles = {
 }
 
 ---@type Kocos.ramfs.node
-local ramfs = {
-	items = {
-		textfile = {
-			fileData = "sick file bro",
-		},
-	},
+local img = {
+	items = {},
 }
 
+for _, file in ipairs(importantFiles) do
+	print("Loading " .. file .. " into RAM...")
+	img.items[file:sub(2)] = ramfs.readTree(file)
+end
+
+print("Generating ramfs component...")
+local fs = assert(k.cramfs(img, "mktmproot", false))
+print("Unmounting tmp...")
 k.unmount"/tmp"
-local fs = assert(k.cramfs(ramfs, "mktmproot", false))
+print("Mounting ramfs...")
 assert(k.mountDev("/tmp", fs))
 
 local toMake = {
@@ -34,6 +40,7 @@ local toMake = {
 	"/dev",
 }
 
+print("Fixing ramfs...")
 for _, dir in ipairs(toMake) do
 	assert(k.mkdir("/tmp" .. dir, 2^16-1))
 end

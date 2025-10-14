@@ -204,7 +204,7 @@ function fs.resolve(path, ignoreLastLink)
 
 	local mountpoint, mountpath = fs.root, path
 
-	repeat
+	while true do
 		local done = true
 		if mountpoint.submounts[mountpath] then
 			if ignoreLastLink then
@@ -220,10 +220,11 @@ function fs.resolve(path, ignoreLastLink)
 				mountpoint = mp
 				mountpath = path:sub(#m + 2)
 				done = false
-				break
 			end
 		end
-	until done
+		-- TODO: there appears to be a bug where it doesn't loop
+		if done then break end
+	end
 
 	return mountpoint, mountpath
 end
