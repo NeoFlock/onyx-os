@@ -2,6 +2,8 @@
 
 -- TODO: implement fully
 
+local arg = ...
+
 local ramfs = require("ramfs")
 
 local importantFiles = {
@@ -47,6 +49,10 @@ end
 
 assert(k.mountDev("/tmp/dev", "devfs"))
 
-if k.exists("/tmp/bin") then
-	os.executeBin("/bin/chroot.lua", {"/tmp"})
+if arg == "-g" then
+	assert(k.chsysroot(fs))
+else
+	if k.exists("/tmp/bin") then
+		os.executeBin("/bin/chroot.lua", {"/tmp"})
+	end
 end

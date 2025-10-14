@@ -3,6 +3,7 @@
 assert(Kocos, "not running in kernel address space")
 
 local kBootTime = k.uptime()
+local predTime = kBootTime
 local cmdTime = kBootTime
 local lastCmdTime = kBootTime
 Kocos.printkf(Kocos.L_INFO, "Reached init in %s", string.boottimefmt(kBootTime))
@@ -67,7 +68,34 @@ local function loadFileInfoStuff(path)
 	return assert(load("return " .. data, "=" .. path, nil, {}))()
 end
 
--- Load services
+-- Prelude steps (likely in ramfs)
+local preludeFiles = assert(k.list("/etc/preluded"))
+local preludes = {}
+for _, file in ipairs(preludeFiles) do
+	Kocos.printkf(Kocos.L_INFO, "Found command file: %s", file)
+	---@type onyx.init.command
+	local info = loadFileInfoStuff("/etc/preluded/" .. file)
+	info.priority = info.priority or 100
+	info.args = info.args or {}
+	info.env = info.env or {}
+	info.cwd = info.cwd or "/home"
+	info.addr = info.addr or "user"
+	table.insert(preludes, info)
+end
+
+Kocos.printkf(Kocos.L_INFO, "Running %d prelude steps", #preludes)
+for _, cmd in ipairs(preludes) do
+	Kocos.printkf(Kocos.L_INFO, "Running %s", cmd.name)
+	lastCmdTime = k.uptime()
+	local child = assert(k.fork(function()
+		assert(k.chdir(cmd.cwd))
+		assert(k.exec(cmd.exec, cmd.args, cmd.env, addrs[cmd.addr]))
+	end))
+	assert(k.waitpid(child))
+end
+predTime = k.uptime()
+
+-- Load services (likely out of ramfs)
 local serviceFiles = assert(k.list("/etc/services"))
 local commandFiles = assert(k.list("/etc/initd"))
 
@@ -103,6 +131,7 @@ k.registerDaemon("initd", function(cpid, action, ...)
 		return {
 			bios = Kocos.biosBootTime,
 			kernel = kBootTime,
+			prelude = predTime,
 			allServices = cmdTime,
 			currentCommand = lastCmdTime,
 		}
