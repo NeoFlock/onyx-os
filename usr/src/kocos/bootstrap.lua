@@ -49,7 +49,7 @@ Kocos.disableScreenLogging = false
 Kocos.disableDefaultPanicHandler = false
 Kocos.hostname = Kocos.args.hostname or "localhost"
 
-Kocos.args.minLog = Kocos.args.minLog or 2
+Kocos.args.minLog = Kocos.args.minLog or 1
 
 function Kocos.poweroff(reboot)
 	Kocos.event.notifyListeners("poweroff", reboot)
