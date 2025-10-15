@@ -46,7 +46,7 @@ end
 ---@return string?
 function shutils.search(cmd, exts, path)
 	path = path or k.environ().PATH or shutils.defaultSearchPath(shutils.getUser())
-	exts = exts or {'', '.lua', '.kelf', '.sh', '.cmd', '.bat'}
+	exts = exts or {'', '.lua'}
 
 	local dirs = string.split(path, ":")
 
