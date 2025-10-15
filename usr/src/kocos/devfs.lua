@@ -119,7 +119,7 @@ local function devfsMakeFD(path, mode)
 		---@type Kocos.fs.FileDescriptor
 		return {
 			read = function(_, len)
-				if len == math.huge then len = 1 end
+				if len == math.huge then len = 4096 end
 				return string.rep("\0", len)
 			end,
 			flags = 0,
@@ -130,7 +130,7 @@ local function devfsMakeFD(path, mode)
 		---@type Kocos.fs.FileDescriptor
 		return {
 			read = function(_, len)
-				if len == math.huge then len = 1 end
+				if len == math.huge then len = 4096 end
 				local c = ""
 				for _=1,len do
 					c = c .. string.char(math.random(0, 255))
@@ -145,7 +145,7 @@ local function devfsMakeFD(path, mode)
 		---@type Kocos.fs.FileDescriptor
 		return {
 			read = function(_, len)
-				if len == math.huge then len = 1 end
+				if len == math.huge then len = 4096 end
 				local c = ""
 				local a = "0123456789ABCDEF"
 				for _=1,len do

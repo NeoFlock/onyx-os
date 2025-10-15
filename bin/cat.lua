@@ -2,12 +2,10 @@
 
 local paths = {...}
 
-local blockSize = 4096
-
 for _, path in ipairs(paths) do
 	local f = assert(k.open(path, "r"))
 	while true do
-		local data, err = k.read(f, blockSize)
+		local data, err = k.read(f, math.huge)
 		if err then
 			k.close(f)
 			error(err)
