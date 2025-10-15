@@ -2,7 +2,7 @@
 > Kernel for Open Computers Operating Systems
 
 The kernel of ONYX, but it is also perfectly usable outside of it.
-It is deisgned for low memory usage while still being fully capable of complex workloads.
+It is designed to support a wide range of use cases just fine, and be very extensible.
 
 ## Using KOCOS outside of ONYX
 
@@ -18,15 +18,16 @@ Or the following Lua code
 os.execute"lua build.lua kocos"
 ```
 
-KOCOS will be built in `kernel`.
+KOCOS will be built in `boot/vmkocos`.
 
-Inside of your more complex build system.
+### Inside of your more complex build system
 
-This can be done for an ONYX submodule. There is the downside of having the entirety of ONYX in a submodule,
+This can be done with an ONYX submodule. There is the downside of having the entirety of ONYX in a submodule,
 however unless you're compiling this inside of an OpenComputers machine, you should not run into storage issues
 because of this.
 
-ONYX also contains other things you may want to take, like the Lua script runtime that KOCOS depends on, which can be tricky to get right.
+ONYX also contains other things you may want to take, like the Lua script runtime that most programs depend on, which can be tricky to get right.
+KOCOS will attempt to load in `luart` by default for `--!lua` scripts, but can be configured to load other modules instead.
 
 ## Using KOCOS in OpenOS
 
@@ -37,8 +38,9 @@ ONYX also contains other things you may want to take, like the Lua script runtim
 ## LuaExec
 
 A file starting with `--!lua` is considered a **Lua executable**.
-It is launched with the code as the `_start` symbol AND the main thread.
+It is launched with no symbols.
 However, it also loads in the *Lua runtime* (LuaRT), which is defined in `/lib/luart.lua` by default. It is done using a `require("luart")`, thus it checks `LUA_PATH`.
+The module loaded can be configured in the kernel arguments. An optional binary dependency can also be used.
 
 ## KELF
 > Kocos Executable & Loadable File (very different from ELF)
@@ -47,53 +49,42 @@ The KELF format can be described with the following C structs:
 ```c
 struct kelf_file {
     char header[5] = "KELF\n";
-    char version[]; // new-line terminated base10 integer
-    char osversion[]; // new-line terminated string. Stores the OS this binary was compiled for. Does not mean other OSes can't run it.
-    char architecture[]; // new-line terminated string. Stores the architecture this binary was compiled for (for Lua, it is the _VERSION). Does not mean other versions can't run it.
-    char filetype; // single character, indicates what type of file.
-    char interpreter[]; // new-line terminated base10 integer. If empty, it is statically linked.
-    char dependencyCount[]; // new-line terminated base10 integer
-    char dependencies[][dependencyCount]; // array of new-line terminated strings.
-    char sectionCount[]; // new-line terminated base10 integer
+    uint16_t majorVersion; // version of the KELF format
+    uint8_t minorVersion; // minor versions, for small forwards-compatible tweaks
+    uint8_t filetype; // single byte. What the file represents
+    char osversion[]; // the _OSVERSION it was compiled for. NULL-terminated.
+    char architecture[]; // the architecture it was compiled for. NULL-terminated.
+    char interpreter[]; // the path to the program which will run this binary. NULL-terminated.
+    uint8_t dependencyCount;
+    char dependencies[][dependencyCount]; // array of NULL-terminated strings
+    uint8_t sectionCount;
     kelf_section sections[sectionCount];
 };
 
 enum kelf_filetype {
-    EXECUTABLE = 'X',
-    OBJECT = 'O',
-    LIBRARY = 'L',
+    EXECUTABLE = 0,
+    OBJECT = 1,
+    LIBRARY = 2,
 };
 
 struct kelf_section {
-    char name[]; // new-line terminated string
-    char flags[]; // new-line terminated flag array string
-    char symbolCount[]; // new-line terminated base10 integer
+    char name[]; // NULL-terminated
+    uint16_t symbolCount;
     kelf_symbol symbols[symbolCount];
 };
 
-enum kelf_sectionFlags {
-    READONLY = 'R',
-    EXECUTABLE = 'X',
-    RELOCATABLE = 'O',
-};
-
 struct kelf_symbol {
-    char name[]; // new-line terminated string
-    char source[]; // new-line terminated string, indicates the "source path" for debug information
-    char size[]; // new-line terminated base10 integer
+    char name[]; // NULL-terminated
+    char source[]; // NULL_terminated
+    uint32_t size;
     uint8_t contents[size];
-};
-
-enum kelf_symbolFlags {
-    WEAK = 'W', // this means linker may rename them and may not need to expose them
-    GLOBAL = 'G', // should be exported
 };
 ```
 
-A `char` is a single *ASCII character*. Unicode is allowed, but should be treated as *multiple characters*.
-
-For Lua, the `.lua` section is used for general-purpose Lua code. Sections for more specific versions can be used, like `.Lua 5.2` (more accurately, `"." .. _VERSION`)
-If used for architectures or on platforms which may require **link information**, it may be stored in the `.linking` section.
+For Lua programs, `.lua` is the section which should contain the code.
+Sections in `"." .. _VERSION` (example, `.Lua 5.3` on Lua 5.3) can be used for specialized symbols for the Lua functions, to do a link-time
+version check.
+The `_start` symbol is executed.
 
 # Terminal Sequences
 
