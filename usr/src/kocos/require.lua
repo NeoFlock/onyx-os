@@ -27,6 +27,7 @@ function require(modname, uncached, env)
 	local luaCode = package.searchpath(modname, process.current.env["LUA_PATH"] or env.package.path)
 
 	if luaCode then
+		--if not uncached then env.package.loaded[modname] = true end
 		local v = dofile(luaCode, modname, uncached)
 		if v == nil then v = true end
 		if not uncached then env.package.loaded[modname] = v end

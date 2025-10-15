@@ -316,9 +316,7 @@ function package.searchpath(name, path, sep, rep)
 
 	for _, p in ipairs(paths) do
 		local toCheck = p:gsub("%?", name)
-		local fd = syscall("open", toCheck, "r")
-		if fd then
-			assert(syscall("close", fd))
+		if syscall("exists", toCheck) then
 			return toCheck
 		end
 	end
@@ -345,7 +343,7 @@ function readfile(filename, bufsize)
 	local fd, err = syscall("open", filename, "r")
 	if err then return nil, err end
 
-	local code = ""
+	local code = {}
 	while true do
 		local data, err2 = syscall("read", fd, bufsize or math.huge)
 		if err2 then
@@ -353,12 +351,11 @@ function readfile(filename, bufsize)
 			return nil, err2
 		end
 		if not data then break end
-		code = code .. data
-		coroutine.yield()
+		table.insert(code, data)
 	end
 
 	syscall("close", fd)
-	return code
+	return table.concat(code)
 end
 
 ---@param data string
@@ -368,11 +365,6 @@ function writefile(filename, data)
 	if not fd then return nil, err end
 
 	local ok, err2 = syscall("write", fd, data)
-	if not ok then
-		syscall("close", fd)
-		return nil, err2
-	end
-
 	syscall("close", fd)
-	return true
+	return ok, err2
 end

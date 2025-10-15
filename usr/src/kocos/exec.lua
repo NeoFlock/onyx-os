@@ -41,12 +41,7 @@ function Kocos._default_luaExec(ev, path, f, namespace)
 			end
 		end,
 		deps = {Kocos.args.luaExecRTF},
-		modules = {
-			["_start"] = {
-				data = code,
-				src = path,
-			},
-		},
+		modules = {},
 	}
 end
 

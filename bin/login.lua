@@ -55,5 +55,4 @@ while true do
 		print("login failed")
 		k.sleep(math.random() * 2.5 + 0.5)
 	end
-	coroutine.yield()
 end

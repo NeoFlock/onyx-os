@@ -84,7 +84,6 @@ function Kocos.event.pull(timeout)
 
 	while true do
 		local now = computer.uptime()
-		if now > deadline then return end
 		local timeleft = Kocos.event.minTimeTilNextTimer(deadline - now)
 		local s = {computer.pullSignal(timeleft)}
 		Kocos.event.processTimers()
@@ -92,6 +91,7 @@ function Kocos.event.pull(timeout)
 			Kocos.event.notifyListeners(table.unpack(s))
 			return table.unpack(s)
 		end
+		if now > deadline then return end
 	end
 end
 

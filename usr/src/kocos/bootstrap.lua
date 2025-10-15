@@ -49,6 +49,8 @@ Kocos.disableScreenLogging = false
 Kocos.disableDefaultPanicHandler = false
 Kocos.hostname = Kocos.args.hostname or "localhost"
 
+Kocos.args.minLog = Kocos.args.minLog or 2
+
 function Kocos.poweroff(reboot)
 	Kocos.event.notifyListeners("poweroff", reboot)
 	computer.shutdown(reboot)
@@ -57,7 +59,7 @@ end
 package = {}
 package.preload = {}
 package.loaded = {}
-package.path = Kocos.args.packagePath or "?.lua;?/init.lua;/lib/?.lua;/lib/?/init.lua;/usr/lib/?.lua;/usr/lib/?/init.lua;/usr/local/lib/?.lua;/usr/local/lib/?/init.lua"
+package.path = Kocos.args.packagePath or "/lib/?.lua;/lib/?/init.lua;?.lua;?/init.lua;/usr/lib/?.lua;/usr/lib/?/init.lua;/usr/local/lib/?.lua;/usr/local/lib/?/init.lua"
 package.cpath = Kocos.args.packageCPath or "lib?.so;/lib/lib?.so;/usr/lib/lib?.so;/usr/local/lib/lib?.so"
 package.config = [[
 /

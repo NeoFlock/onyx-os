@@ -12,7 +12,6 @@ while true do
 	if err then error(err) end
 	if not data then break end
 	assert(k.write(dest, data))
-	coroutine.yield()
 end
 
 -- exiting closes fds

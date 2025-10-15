@@ -6,5 +6,4 @@ while true do
 		buf = buf .. string.char(math.random(0, 255))
 	end
 	k.write(1, buf)
-	coroutine.yield()
 end

@@ -3,20 +3,22 @@
 assert(Kocos, "not running in kernel address space")
 
 local kBootTime = k.uptime()
-local bootServiceTime = kBootTime
 local prelTime = kBootTime
 local cmdTime = kBootTime
 local lastCmdTime = kBootTime
 Kocos.printkf(Kocos.L_INFO, "Reached init in %s", string.boottimefmt(kBootTime))
-print("Welcome to \x1b[38;5;2m" .. _OSVERSION .. "\x1b[0m")
+print("Welcome to \x1b[38;5;2m" .. _OSVERSION .. "\x1b[0m!")
+
+---@type _G? Whether to share all globals
+local shared = nil
 
 ---@type table<string, _G>
 local addrs = {
 	-- default address spaces
 	kernel = _G,
-	system = table.luaglobals(),
-	user = table.luaglobals(),
-	cmd = table.luaglobals(),
+	system = shared or table.luaglobals(),
+	user = shared or table.luaglobals(),
+	cmd = shared or table.luaglobals(),
 }
 
 ---@class onyx.init.service
@@ -50,19 +52,7 @@ local cmds = {}
 ---@param path string
 ---@return table
 local function loadFileInfoStuff(path)
-	local f = assert(k.open(path, "r"))
-	local data = ""
-	while true do
-		local chunk, err = k.read(f, 1024)
-		if err then
-			k.close(f)
-			error(err)
-		end
-		if not chunk then break end
-		data = data .. chunk
-		coroutine.yield()
-	end
-	k.close(f)
+	local data = readfile(path)
 
 	return assert(load("return " .. data, "=" .. path, nil, {}))()
 end

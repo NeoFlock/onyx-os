@@ -707,13 +707,13 @@ function Kocos.writelog(text)
 end
 
 function Kocos.printk(severity, msg)
-	if Kocos.args.minLog then
-		if severity < Kocos.args.minLog then return end
-	end
-
 	local uptime = computer.uptime()
 
 	Kocos.event.notifyListeners("kocos_log", uptime, severity, msg)
+
+	if Kocos.args.minLog then
+		if severity < Kocos.args.minLog then return end
+	end
 
 	local names = {
 		[Kocos.L_DEBUG] = "DEBUG",

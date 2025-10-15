@@ -458,9 +458,9 @@ end
 ---@param f function
 ---@return integer Returns pid of new process
 function syscalls.fork(f)
-	local pid = process.fork(process.current, f).pid
-	coroutine.yield() -- give child a chance to shine
-	return pid
+	local child = process.fork(process.current, f)
+	process.resume(child) -- give child a chance to shine
+	return child.pid
 end
 
 function syscalls.environ()
@@ -653,10 +653,14 @@ end
 
 ---@param pid integer
 ---@param condition Kocos.process.condition
+---@return boolean, string?
 function syscalls.blockUntil(pid, condition)
 	local p = process.allProcs[pid]
-	if not p then return nil, errno.ESRCH end
-	if type(condition) ~= "function" then return nil, errno.EINVAL end
+	if not p then return false, errno.ESRCH end
+	if type(condition) ~= "function" then return false, errno.EINVAL end
+
+	-- optimization
+	if condition() then return true end
 
 	local cur = process.current
 	if cur.uid ~= 0 and not process.isDecendantOf(p, cur) then
@@ -664,7 +668,7 @@ function syscalls.blockUntil(pid, condition)
 	end
 
 	process.blockUntil(p, function()
-		local ok, s = pcall(condition)
+		local ok, s = process.pcall(cur, condition)
 		if not ok then return false end
 		return s
 	end)
@@ -1078,6 +1082,15 @@ end
 
 function syscalls.errnos()
 	return table.copy(Kocos.errno)
+end
+
+---@param pid integer
+---@return boolean, string?
+function syscalls.resume(pid)
+	local proc = process.allProcs[pid]
+	if not proc then return false, errno.ESRCH end
+	process.resume(proc)
+	return true
 end
 
 Kocos.syscalls = syscalls

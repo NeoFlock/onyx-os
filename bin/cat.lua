@@ -14,7 +14,6 @@ for _, path in ipairs(paths) do
 		end
 		if not data then break end
 		k.write(1, data)
-		coroutine.yield()
 	end
 	k.close(f)
 end

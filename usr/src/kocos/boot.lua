@@ -51,6 +51,7 @@ local initPaths = {
 
 -- classic fork() exec()
 local initProc = Kocos.process.fork(Kocos.process.root, function()
+	Kocos.process.init.executionDeadline = math.huge
 	for _, path in ipairs(initPaths) do
 		if syscall("exists", path) then
 			Kocos.printkf(Kocos.L_INFO, "Running %s...", path)
@@ -75,6 +76,8 @@ initProc.fds[1] = {
 initProc.fds[0] = initProc.fds[1]
 initProc.fds[2] = initProc.fds[1]
 initProc.fds[3] = initProc.fds[1]
+
+Kocos.process.resume(initProc)
 
 local function justDie()
 	pcall(computer.pullSignal, 2)
