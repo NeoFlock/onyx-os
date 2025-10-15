@@ -494,25 +494,29 @@ end
 ---@param argv string[]?
 ---@param env table<string, string>?
 ---@param namespace _G?
----@return boolean?, string?
+---@return boolean, string?
 function syscalls.exec(path, argv, env, namespace)
 	if type(path) ~= "string" then
-		return nil, errno.EINVAL
+		return false, errno.EINVAL
 	end
+
+	local cur = process.current
 
 	argv = argv or {[0] = path}
 	argv[0] = argv[0] or path
-	env = env or table.copy(process.current.env)
-	namespace = namespace or process.current.namespace
+	env = env or table.copy(cur.env)
+	namespace = namespace or cur.namespace
 
-	path = process.resolve(process.current, path)
+	path = process.resolve(cur, path)
 
 	-- TODO: check read + exec perms
 
-	local ok, err = process.exec(process.current, path, argv, env, namespace)
-	if not ok then return nil, err end
+	local ok, err = process.exec(cur, path, argv, env, namespace)
+	if not ok then return false, err end
 
+	-- TODO: consider some way to resume it instantly
 	coroutine.yield() -- and, its gone.
+	return true
 end
 
 ---@param module string

@@ -30,23 +30,13 @@ end
 local initPaths = {
 	-- init process
 	"/sbin/init",
-	"/sbin/init.lua",
-	"/sbin/init.sh",
 	"/bin/init",
-	"/bin/init.lua",
-	"/bin/init.sh",
 	-- login???
 	"/sbin/login",
-	"/sbin/login.lua",
-	"/sbin/login.sh",
 	"/bin/login",
-	"/bin/login.lua",
-	"/bin/login.sh",
 	-- shell???
 	"/sbin/sh",
-	"/sbin/sh.lua",
 	"/bin/sh",
-	"/bin/sh.lua",
 }
 
 -- classic fork() exec()
