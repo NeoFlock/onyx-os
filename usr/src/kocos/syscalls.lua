@@ -515,6 +515,7 @@ function syscalls.exec(path, argv, env, namespace)
 	if not ok then return false, err end
 
 	-- TODO: consider some way to resume it instantly
+	--process.resume(cur) -- deadlocks?
 	coroutine.yield() -- and, its gone.
 	return true
 end
@@ -647,6 +648,7 @@ end
 function syscalls.waitpid(pid)
 	local proc = process.allProcs[pid]
 	if not proc then return 0 end
+	process.resume(proc)
 	-- theoretically a signal can fuck us up however we do not care
 	process.blockUntil(process.current, function()
 		return not process.isRunning(proc)

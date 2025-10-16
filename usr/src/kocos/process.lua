@@ -509,9 +509,6 @@ function process.resume(proc)
 	if proc.stopped then return end
 	if process.isBlocked(proc) then return end
 	if not process.isRunning(proc) then return end
-	if process.isBlocked(proc) then -- best feature in all of gaming
-		return
-	end
 	if coroutine.status(proc.thread) ~= "suspended" then return end
 	local old = process.current
 	process.current = proc.reEnterAs or proc

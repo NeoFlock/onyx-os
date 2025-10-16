@@ -167,7 +167,6 @@ for service, info in pairs(serviceInfo) do
 	serviceFromPids[pid] = service
 end
 
-Kocos.printkf(Kocos.L_INFO, "Waiting for %d services", #serviceFiles)
 k.invokeDaemon("initd", "waitFor", table.unpack(allServices))
 
 cmdTime = k.uptime()
