@@ -1,0 +1,4 @@
+name=sockinternetd
+type=spawn
+groups=setup,network
+exec=/bin/sockinternetd.lua

@@ -1,6 +1,0 @@
-{
-	name="socktunneld",
-	deps={},
-	exec="/bin/socktunneld.lua",
-	addr="system",
-}

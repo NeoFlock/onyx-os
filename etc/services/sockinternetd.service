@@ -1,6 +1,0 @@
-{
-	name="sockinternetd",
-	deps={},
-	exec="/bin/sockinternetd.lua",
-	addr="system",
-}

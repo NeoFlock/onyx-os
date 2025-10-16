@@ -1,13 +1,15 @@
 --!lua
 
+local conf = require("conf")
+
 assert(Kocos, "not running in kernel address space")
 
+local biosTime = Kocos.biosBootTime
 local kBootTime = k.uptime()
-local prelTime = kBootTime
-local cmdTime = kBootTime
 local lastCmdTime = kBootTime
-Kocos.printkf(Kocos.L_INFO, "Reached init in %s", string.boottimefmt(kBootTime))
 print("Welcome to \x1b[38;5;2m" .. _OSVERSION .. "\x1b[0m!")
+
+local onitServiceDir = "/etc/onit.d"
 
 ---@type _G? Whether to share all globals
 local shared = nil
@@ -16,174 +18,123 @@ local shared = nil
 local addrs = {
 	-- default address spaces
 	kernel = _G,
-	system = shared or table.luaglobals(),
-	user = shared or table.luaglobals(),
-	cmd = shared or table.luaglobals(),
 }
 
----@class onyx.init.service
+---@param addr string
+---@return _G
+local function getAddress(addr)
+	if not addrs[addr] then
+		addrs[addr] = shared or table.luaglobals()
+	end
+	return addrs[addr]
+end
+
+---@type onit.service?
+local toComplete = nil
+
+---@class onit.service
 ---@field name string
----@field deps string[]
----@field cwd string
+---@field type "run"|"spawn"
+---@field groups string[]
+---@field needs string[]
 ---@field exec string
----@field args string[]
----@field env table<string, string>
+---@field argv string[]
 ---@field addr string
+---@field loadTime? number
+---@field completionTime? number
+---@field pid? integer
 
----@class onyx.init.command
----@field name string
----@field priority integer
----@field cwd string
----@field exec string
----@field args string[]
----@field env table<string, string>
----@field addr string
+---@type table<string, onit.service>
+local services = {}
+---@type string[]
+local order = {}
 
----@type table<string, onyx.init.service>
-local serviceInfo = {}
----@type table<string, boolean>
-local servicesLoaded = {}
----@type table<integer, string>
-local serviceFromPids = {}
+---@type table<string, string[]>
+local groups = {}
 
----@type onyx.init.command[]
-local cmds = {}
+---@param service string
+local function orderService(service)
+	if service:sub(1,1) == "@" then
+		local group = service:sub(2)
+		local g = groups[group]
+		if not g then return end
+		for _, s in ipairs(g) do
+			orderService(s)
+		end
+	end
+	local info = services[service]
+	if not info then return end
+	if info.completionTime then return end
+	info.completionTime = k.uptime()
 
----@param path string
----@return table
-local function loadFileInfoStuff(path)
-	local data = readfile(path)
+	for _, dep in ipairs(info.needs) do
+		orderService(dep)
+	end
 
-	return assert(load("return " .. data, "=" .. path, nil, {}))()
+	table.insert(order, service)
 end
 
--- Prelude steps (likely in ramfs)
-local preludeFiles = assert(k.list("/etc/preluded"))
-local preludes = {}
-for _, file in ipairs(preludeFiles) do
-	Kocos.printkf(Kocos.L_INFO, "Found command file: %s", file)
-	---@type onyx.init.command
-	local info = loadFileInfoStuff("/etc/preluded/" .. file)
-	info.priority = info.priority or 100
-	info.args = info.args or {}
-	info.env = info.env or {}
-	info.cwd = info.cwd or "/home"
-	info.addr = info.addr or "user"
-	table.insert(preludes, info)
-end
-
-Kocos.printkf(Kocos.L_INFO, "Running %d prelude steps", #preludes)
-for _, cmd in ipairs(preludes) do
-	Kocos.printkf(Kocos.L_INFO, "Running %s", cmd.name)
-	lastCmdTime = k.uptime()
-	local child = assert(k.fork(function()
-		assert(k.chdir(cmd.cwd))
-		assert(k.exec(cmd.exec, cmd.args, cmd.env, addrs[cmd.addr]))
-	end))
-	assert(k.waitpid(child))
-end
-prelTime = k.uptime()
-
--- Load services (likely out of ramfs)
-local serviceFiles = assert(k.list("/etc/services"))
-local commandFiles = assert(k.list("/etc/initd"))
+local serviceFiles = assert(k.list(onitServiceDir))
 
 for _, file in ipairs(serviceFiles) do
-	Kocos.printkf(Kocos.L_INFO, "Found service file: %s", file)
-	---@type onyx.init.service
-	local info = loadFileInfoStuff("/etc/services/" .. file)
-	info.deps = info.deps or {}
-	info.args = info.args or {}
-	info.env = info.env or {}
-	info.cwd = info.cwd or "/"
-	info.addr = info.addr or "system"
-	serviceInfo[info.name] = info
+	local p = onitServiceDir .. "/" .. file
+	local str = assert(readfile(p))
+	local info = conf.decode(str)
+
+	local name = info.name or file
+	services[name] = {
+		name = name,
+		type = info.type or "run",
+		groups = string.split(info.groups or "setup", ","),
+		needs = info.needs and string.split(info.needs, ",") or {},
+		exec = info.exec,
+		argv = info.argv and string.split(info.argv, ",") or {},
+		addr = info.addr or "system",
+	}
+	for _, g in ipairs(services[name].groups) do
+		groups[g] = groups[g] or {}
+		table.insert(groups[g], name)
+	end
 end
 
-for _, file in ipairs(commandFiles) do
-	Kocos.printkf(Kocos.L_INFO, "Found command file: %s", file)
-	---@type onyx.init.command
-	local info = loadFileInfoStuff("/etc/initd/" .. file)
-	info.priority = info.priority or 100
-	info.args = info.args or {}
-	info.env = info.env or {}
-	info.cwd = info.cwd or "/home"
-	info.addr = info.addr or "user"
-	table.insert(cmds, info)
+for s in pairs(services) do
+	orderService(s)
 end
 
----@param action string
-k.registerDaemon("initd", function(cpid, action, ...)
-	if type(action) ~= "string" then return nil, "bad request" end
-
+assert(k.registerDaemon("initd", function(cpid, action, ...)
+	if type(action) ~= "string" then return end
+	if action == "markComplete" then
+		if not toComplete then return end
+		if toComplete.pid ~= cpid then return end
+		toComplete.completionTime = k.uptime()
+		toComplete = nil
+		coroutine.yield()
+	end
 	if action == "timings" then
 		return {
-			bios = Kocos.biosBootTime,
+			bios = biosTime,
 			kernel = kBootTime,
-			prelude = prelTime,
-			allServices = cmdTime,
 			currentCommand = lastCmdTime,
 		}
 	end
+end))
 
-	if action == "waitFor" then
-		local services = {...}
-		k.blockUntil(cpid, function()
-			for _, serv in ipairs(services) do
-				if not servicesLoaded[serv] then return false end
-			end
-			return true
-		end)
-		return true
-	end
-
-	if action == "markComplete" then
-		local service = serviceFromPids[cpid]
-		if not service then return nil, "not a service" end
-		Kocos.printkf(Kocos.L_INFO, "%s completed", service)
-		servicesLoaded[service] = true
-		return true
-	end
-end)
-
--- Debug handlers
-k.signal("SIGCHLD", function(cpid, exit)
-	local serv = serviceFromPids[cpid]
-	if not serv then return end -- command, don't care
-	Kocos.printkf(Kocos.L_WARN, "Service %s exited with %s", serv, tostring(exit))
-end)
-
--- Launch services
-Kocos.printkf(Kocos.L_INFO, "Launching %d services", #serviceFiles)
-local allServices = {}
-for service, info in pairs(serviceInfo) do
-	Kocos.printkf(Kocos.L_INFO, "Launching %s", service)
-	table.insert(allServices, service)
-	local pid = assert(k.fork(function()
-		assert(k.chdir(info.cwd))
-		assert(k.invokeDaemon("initd", "waitFor", table.unpack(info.deps)))
-		assert(k.exec(info.exec, info.args, info.env, addrs[info.addr]))
-	end))
-	serviceFromPids[pid] = service
-end
-
-k.invokeDaemon("initd", "waitFor", table.unpack(allServices))
-
-cmdTime = k.uptime()
-Kocos.printkf(Kocos.L_INFO, "Finished services in %s (%s total)", string.boottimefmt(cmdTime - kBootTime), string.boottimefmt(cmdTime))
-
-table.sort(cmds, function(a, b) return a.priority > b.priority end)
-
--- Run commands
-Kocos.printkf(Kocos.L_INFO, "Running %d commands", #cmds)
-for _, cmd in ipairs(cmds) do
-	Kocos.printkf(Kocos.L_INFO, "Running %s", cmd.name)
+for _, s in ipairs(order) do
+	local info = services[s]
 	lastCmdTime = k.uptime()
-	local child = assert(k.fork(function()
-		assert(k.chdir(cmd.cwd))
-		assert(k.exec(cmd.exec, cmd.args, cmd.env, addrs[cmd.addr]))
-	end))
-	assert(k.waitpid(child))
+	info.loadTime = lastCmdTime
+	if info.type == "spawn" then
+		toComplete = info
+		Kocos.printkf(Kocos.L_INFO, "Spawing %s...", info.name)
+		assert(k.fork(function()
+			info.pid = k.getpid()
+			assert(k.exec(info.exec, info.argv, nil, getAddress(info.addr)))
+		end))
+		while toComplete do coroutine.yield() end
+	elseif info.type == "run" then
+		Kocos.printkf(Kocos.L_INFO, "Running %s...", info.name)
+		assert(os.executeBin(info.exec, info.argv, nil, getAddress(info.addr)), "command failed")
+	end
 end
 
-Kocos.printkf(Kocos.L_INFO, "All commands have finished")
+-- Shutdown!!!!

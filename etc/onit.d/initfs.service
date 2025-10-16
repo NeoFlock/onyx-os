@@ -1,0 +1,5 @@
+name=initfs
+type=run
+groups=initfs
+needs=@setup,@fs
+exec=/sbin/initfs.lua

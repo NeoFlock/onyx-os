@@ -1,0 +1,4 @@
+name=sudod
+type=spawn
+groups=setup,auth
+exec=/bin/sudod.lua

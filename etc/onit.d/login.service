@@ -1,0 +1,6 @@
+name=login
+type=run
+groups=os
+needs=@initfs
+exec=/bin/login.lua
+addr=user

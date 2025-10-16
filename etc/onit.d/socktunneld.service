@@ -1,0 +1,4 @@
+name=socktunneld
+type=spawn
+groups=setup,network
+exec=/bin/socktunneld.lua
