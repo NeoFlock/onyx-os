@@ -48,11 +48,11 @@ enum fileMode {
     directory = 8,
 };
 
-// an actual block of data pointed to by, for example, firstBlock in the data.
+// an actual block of data pointed to by, for example, firstBlock in the entry.
 struct dataBlock {
     uint16_t nextBlock; // Null for the last block
     // 30 bytes reserved, should be 0. This simplifies reading directories as it makes the blocks fit an even amount of entries.
-    uint8_t data[]; // rest of data
+    uint8_t data[]; // rest of sector
 };
 ```
 
