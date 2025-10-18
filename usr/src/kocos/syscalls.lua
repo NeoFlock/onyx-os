@@ -148,7 +148,10 @@ function syscalls.read(fd, length)
 	local f = proc.fds[fd]
 	if f then
 		if f.file then
-			return Kocos.fs.read(f.file, length)
+			if f.file.read then
+				return f.file:read(length)
+			end
+			return nil, errno.EBADF
 		end
 		if f.socket then
 			return Kocos.net.read(f.socket, length)

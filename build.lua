@@ -10,6 +10,13 @@ if 1<0 then
 	function checkArg(n, v, ...) end
 end
 
+if not os.exec then
+	-- on actual Lua
+	package.path = package.path .. ";usr/lib/?.lua"
+end
+
+require("usr.src.kocos.utils")
+
 local toBuild = {
 	"onyx",
 }
@@ -34,6 +41,7 @@ local buildInfo = {
 	},
 	kocos = {
 		type = "cat",
+		luamin = true,
 		files = {
 			"usr/src/kocos/bootstrap.lua",
 			"usr/src/kocos/utils.lua",
@@ -58,6 +66,16 @@ local buildInfo = {
 	},
 }
 
+local min = os.getenv("ONYX_MIN")
+
+---@param src string
+---@return string
+local function luamin(src)
+	if not min then return src end
+	local l = require("luamin")
+	return l(src)
+end
+
 local function runBuild(thing)
 	if built[thing] then return end
 	built[thing] = true
@@ -73,9 +91,13 @@ local function runBuild(thing)
 		-- Directly merge files
 		local outcode = ""
 		for _, file in ipairs(entry.files) do
+			print("Reading", file)
 			local f = assert(io.open(file, "rb"))
-			outcode = outcode .. assert(f:read("*all"), "no code")
+			outcode = outcode .. assert(f:read("a"), "no code")
 			f:close()
+		end
+		if entry.luamin then
+			outcode = luamin(outcode)
 		end
 		local f = assert(io.open(entry.out, "wb"))
 		f:write(outcode)

@@ -1,7 +1,4 @@
 --!lua
---[[
-// vim: set ft=lua
-]]
 
 local shutils = require("shutils")
 

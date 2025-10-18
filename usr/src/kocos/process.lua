@@ -279,7 +279,7 @@ end
 ---@param proc Kocos.process
 ---@param res Kocos.resource
 function process.moveResource(proc, res)
-	local fd = #proc.fds
+	local fd = 0
 	while proc.fds[fd] do fd = fd + 1 end
 	proc.fds[fd] = res
 	return fd
@@ -410,20 +410,16 @@ end
 ---@param namespace _G
 ---@return boolean?, string?
 function process.exec(proc, path, argv, env, namespace)
-	local f, err = Kocos.fs.open(path, "r")
-	if not f then return nil, err end
+	local data = readfile(path)
 	for _, driver in ipairs(Kocos.drivers) do
-		Kocos.fs.seek(f, "set", 0)
 		-- PROC-binfmt
 		---@type Kocos.process.image?, string?
-		local img, err2 = driver("PROC-binfmt", path, f, namespace)
+		local img, err2 = driver("PROC-binfmt", path, data, namespace)
 		if err2 then
 			-- actual error instead of being ignored
-			Kocos.fs.close(f)
 			return nil, err2
 		end
 		if img then
-			Kocos.fs.close(f)
 			-- if this is nil and err2 is also nil, means driver ignored it
 			proc.exe = path
 			proc.args = argv
@@ -453,8 +449,6 @@ function process.exec(proc, path, argv, env, namespace)
 			return true
 		end
 	end
-
-	Kocos.fs.close(f)
 
 	return nil, Kocos.errno.ENOEXEC
 end

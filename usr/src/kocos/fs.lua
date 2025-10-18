@@ -75,7 +75,7 @@ function fs.getVirtualDrive(drive)
 end
 
 ---@param drive Kocos.device
----@return Kocos.fs.partition[]?
+---@return string[]?
 function fs.getPartitionsOf(drive)
 	for _, driver in ipairs(Kocos.drivers) do
 		local parts = driver("FS-getpartitions", drive)
@@ -518,7 +518,7 @@ function fs._defaultManagedFS(req, ...)
 		local dev, path, mode = ...
 		if dev.isDirectory(path) then return nil, Kocos.errno.EISDIR end
 		local fd, err = dev.open(path, mode)
-		if not fd then return err end
+		if not fd then return nil, err end
 		---@type Kocos.fs.FileDescriptor
 		return {
 			write = function(_, data)
@@ -546,20 +546,3 @@ Kocos.printk(Kocos.L_INFO, "registering default drivers")
 Kocos.addDriver(fs._defaultManagedFS)
 Kocos.printk(Kocos.L_INFO, "managedfs driver registered")
 
--- At this point we're supposed to mount the bootfs, either ramfs image or actual root
-Kocos.printk(Kocos.L_INFO, "mounting boot filesystem at /")
-
-local rootDev
-
-if Kocos.args.ramfs then
-	rootDev = Kocos.addRamfsComponent(Kocos.args.ramfs, "ramfs")
-	Kocos.printk(Kocos.L_DEBUG, "mounting as ramfs tmp root")
-else
-	rootDev = Kocos.args.root or computer.getBootAddress()
-	Kocos.printk(Kocos.L_DEBUG, "mounting as managedfs true root")
-end
-
-do
-	local dev = assert(component.proxy(rootDev))
-	fs.root = assert(fs.mount(dev), Kocos.errno.ENODRIVER)
-end

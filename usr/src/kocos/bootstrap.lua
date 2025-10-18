@@ -61,9 +61,4 @@ package.preload = {}
 package.loaded = {}
 package.path = Kocos.args.packagePath or "/lib/?.lua;/lib/?/init.lua;?.lua;?/init.lua;/usr/lib/?.lua;/usr/lib/?/init.lua;/usr/local/lib/?.lua;/usr/local/lib/?/init.lua"
 package.cpath = Kocos.args.packageCPath or "lib?.so;/lib/lib?.so;/usr/lib/lib?.so;/usr/local/lib/lib?.so"
-package.config = [[
-/
-;
-?
-!
--]]
+package.config = "/\n;\n?\n!\n-"

@@ -4,25 +4,15 @@
 -- Links in: the runtime
 ---@param ev "PROC-binfmt"
 ---@param path string
----@param f Kocos.fs.FileDescriptor
+---@param data string
 ---@param namespace _G
 ---@return Kocos.process.image?, string?
-function Kocos._default_luaExec(ev, path, f, namespace)
+function Kocos._default_luaExec(ev, path, data, namespace)
 	if ev ~= "PROC-binfmt" then return end
 
-	-- TODO: maybe buffer? Weird FS impl might cause weird shit
-	local code = Kocos.fs.read(f, 6)
-	if code ~= "--!lua" then return end
+	if data:sub(1, 6) ~= "--!lua" then return end
 
-	while true do
-		local data, err = Kocos.fs.read(f, math.huge)
-		if err then return nil, err end
-
-		if not data then break end
-		code = code .. data
-	end
-
-	local init, err = load(code, "=" .. path, nil, namespace)
+	local init, err = load(data, "=" .. path, nil, namespace)
 	if not init then return nil, err end
 
 	---@type Kocos.process.image
@@ -49,21 +39,19 @@ end
 -- Links in: nothing
 ---@param ev "PROC-binfmt"
 ---@param path string
----@param f Kocos.fs.FileDescriptor
+---@param data string
 ---@param namespace _G
 ---@return Kocos.process.image?, string?
-function Kocos._default_shebang(ev, path, f, namespace)
+function Kocos._default_shebang(ev, path, data, namespace)
 	if ev ~= "PROC-binfmt" then return end
-	local ln = Kocos.fs.read(f, 128)
-	if not ln then return end
-	if ln:sub(1, 2) ~= "#!" then return end
+	if data:sub(1, 2) ~= "#!" then return end
 
-	local nl = string.find(ln, "\n")
+	local nl = string.find(data, "\n")
 	if nl then
-		ln = string.sub(ln, 1, nl-1)
+		data = string.sub(data, 1, nl-1)
 	end
 
-	local cmd = ln:sub(3)
+	local cmd = data:sub(3)
 	local args = string.split(cmd, " ")
 	cmd = table.remove(args, 1)
 	table.insert(args, path)

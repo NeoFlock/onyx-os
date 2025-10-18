@@ -63,7 +63,7 @@ R - Shutdown
 m - View memory usage
 e - View battery status
 c - List known device hardware
-c <filter> - Like c, except using a fuzzy match identical to component.list()'s
+c <filter> - Like c, except using a fuzzy match identical to component.list()
 bp <expression> - Wrap a function to trigger a breakpoint. This will replace the function with a table with the __call metamethod.
 bt - Print the backtrace saved from the latest breakpoint
 ba - Print the arguments saved from the latest breakpoint

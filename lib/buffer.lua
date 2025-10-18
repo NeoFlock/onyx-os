@@ -215,6 +215,7 @@ end
 function buffer:close()
 	self:flush()
 	self.buffer=nil
+	self.stream:close()
 end
 
 return buffer

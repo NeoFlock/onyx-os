@@ -1,3 +1,3 @@
 # ONYX
 
-A powerful but lightweight operating system.
+A powerful and UNIX-like operating system.

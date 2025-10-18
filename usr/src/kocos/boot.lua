@@ -1,5 +1,23 @@
 Kocos.printkf(Kocos.L_INFO, "Booting %s...", _KVERSION)
 
+-- At this point we're supposed to mount the bootfs, either ramfs image or actual root
+Kocos.printk(Kocos.L_INFO, "mounting boot filesystem at /")
+
+local rootDev
+
+if Kocos.args.ramfs then
+	rootDev = Kocos.addRamfsComponent(Kocos.args.ramfs, "ramfs")
+	Kocos.printk(Kocos.L_DEBUG, "mounting as ramfs tmp root")
+else
+	rootDev = Kocos.args.root or computer.getBootAddress()
+	Kocos.printk(Kocos.L_DEBUG, "mounting as managedfs true root")
+end
+
+do
+	local dev = assert(component.proxy(rootDev))
+	Kocos.fs.root = assert(Kocos.fs.mount(dev), Kocos.errno.ENODRIVER)
+end
+
 Kocos.printkf(Kocos.L_DEBUG, "Detecting hardware...")
 for addr, type in component.list() do
 	Kocos.printkf(Kocos.L_DEBUG, "%s %s", addr, type)
