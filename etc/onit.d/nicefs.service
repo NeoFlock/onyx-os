@@ -1,0 +1,4 @@
+name=nicefs
+type=spawn
+groups=fs
+exec=/sbin/nicefsd.lua

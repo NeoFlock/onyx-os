@@ -410,7 +410,7 @@ end
 ---@param namespace _G
 ---@return boolean?, string?
 function process.exec(proc, path, argv, env, namespace)
-	local data = readfile(path)
+	local data = assert(readfile(path))
 	for _, driver in ipairs(Kocos.drivers) do
 		-- PROC-binfmt
 		---@type Kocos.process.image?, string?

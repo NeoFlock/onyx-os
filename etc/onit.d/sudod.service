@@ -1,4 +1,5 @@
 name=sudod
 type=spawn
 groups=setup,auth
+needs=@initfs
 exec=/bin/sudod.lua

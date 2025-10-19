@@ -19,6 +19,8 @@ fs.FTYPE_CHR = "chardev"
 ---@field readSector fun(index: integer): string
 ---@field writeSector fun(index: integer, data: string)
 --- readByte/writeByte considered harmful, evil and stinky
+---@field readByte fun(index: integer): integer
+---@field writeByte fun(index: integer, byte: integer)
 
 ---@class Kocos.fs.stat
 ---@field deviceAddress string

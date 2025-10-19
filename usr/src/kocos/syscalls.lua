@@ -493,6 +493,11 @@ function syscalls.uptime()
 	return computer.uptime()
 end
 
+function syscalls.sync()
+	Kocos.fs.sync()
+	return true
+end
+
 ---@param path string
 ---@param argv string[]?
 ---@param env table<string, string>?

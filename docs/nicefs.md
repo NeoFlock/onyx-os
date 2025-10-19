@@ -32,6 +32,7 @@ struct superblock {
 struct entry {
     char name[16]; // padded with NULLs. All NULLs should be removed when reading out the name of the file.
     uint24_t fileSizeAndMode; // highest 4 bits are for the file mode, more on that later
+    // firstBlock can be null, in which case there is no data associated with the entry. This allows 0 byte files to truly take up 0 bytes.
     uint16_t firstBlock;
     // 11 bytes reserved, should be 0.
 };
@@ -59,6 +60,8 @@ struct dataBlock {
 `nextFreeBlock` points to the first sector in the unused space of the filesystem. `freeList` should point to the most recently freed block, and represents a
 singled linked list of blocks which can be re-used. `activeBlockCount` represents the number of blocks which are in active use, and should be at least 2, as
 sector 1 and the superblock do count. This, times the sector size, is the total space used of the storage volume.
+
+For directories, the file size is the amount of *entries*.
 
 # Booting
 

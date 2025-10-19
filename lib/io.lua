@@ -20,22 +20,7 @@ function io.open(filename, mode)
 	local fd, err = k.open(filename, mode)
 	if not fd then return nil, err end
 
-	return buffer.create({
-		fd = fd,
-		write = function(_, data)
-			local ok, werr = k.write(fd, data)
-			return ok or false, werr
-		end,
-		read = function(_, len)
-			return k.read(fd, len)
-		end,
-		seek = function(_, whence, off)
-			return k.seek(fd, whence, off)
-		end,
-		close = function()
-			return k.close(fd)
-		end,
-	}, mode == "r", textmode), nil
+	return io.wrap(fd, mode == "r", textmode), nil
 end
 
 ---@param fd integer

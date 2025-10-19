@@ -17,7 +17,7 @@
 ---@field buffer? string
 local buffer = {}
 buffer.__index = buffer
-buffer.defaultBufferSize = 16*1024
+buffer.defaultBufferSize = 2*1024
 ---@type buffer.mode
 buffer.defaultBufferMode = "line"
 

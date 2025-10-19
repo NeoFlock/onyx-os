@@ -1,0 +1,3 @@
+--!lua
+
+assert(k.sync())
