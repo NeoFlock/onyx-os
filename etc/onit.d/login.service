@@ -1,6 +1,6 @@
 name=login
 type=run
 groups=os
-needs=@initfs
+needs=@setup,@initfs
 exec=/bin/login.lua
 addr=user

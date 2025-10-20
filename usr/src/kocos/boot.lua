@@ -28,11 +28,20 @@ local totalMem = computer.totalMemory()
 
 Kocos.printkf(Kocos.L_INFO, "Free Memory: %s / %s", string.memformat(freeMem), string.memformat(totalMem))
 
+---@alias Kocos.shutdownType "halt"|"poweroff"|"reboot"
+---@type Kocos.shutdownType?
+Kocos.shutdown = nil
+
 if freeMem < 64*1024 then
 	Kocos.printkf(Kocos.L_WARN, "FREE MEMORY IS BELOW 64KiB!!!")
 end
 
 local function tick()
+	if Kocos.shutdown then
+		Kocos.printkf(Kocos.L_INFO, "Attempting %s", Kocos.shutdown)
+		Kocos.poweroff(Kocos.shutdown == "reboot")
+		return
+	end
 	Kocos.process.run()
 	local interval = Kocos.args.pollInterval or 0
 	local percent = computer.energy() / computer.maxEnergy()

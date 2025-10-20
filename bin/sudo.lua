@@ -22,7 +22,7 @@ while true do
 	-- authenticate
 	k.write(1, "[sudo] password for " .. user .. ": ")
 	local l = readline(nil, nil, "")
-	if not l then break end
+	if not l then return 1 end
 	local ok, err = k.invokeDaemon("sudod", "chuser", user, l:sub(1, -2))
 	if ok then
 		break

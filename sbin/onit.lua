@@ -101,6 +101,13 @@ for s in pairs(services) do
 	orderService(s)
 end
 
+---@type "halt"|"poweroff"|"reboot"
+local shutDownType = "reboot"
+
+assert(k.signal("SIGTERM", function(err)
+
+end))
+
 assert(k.registerDaemon("initd", function(cpid, action, ...)
 	if type(action) ~= "string" then return end
 	if action == "markComplete" then
@@ -116,6 +123,28 @@ assert(k.registerDaemon("initd", function(cpid, action, ...)
 			kernel = kBootTime,
 			currentCommand = lastCmdTime,
 		}
+	end
+	if action == "poweroff" then
+		---@type "halt"|"poweroff"|"reboot", boolean
+		local t, instant = ...
+		local info = k.getprocinfo(cpid, "uid")
+		if not info then
+			return false, "getprocinfo failed"
+		end
+		if info.euid ~= 0 and info.uid ~= 0 then
+			return false, "permission denied"
+		end
+
+		-- important operations
+		k.sync()
+
+		if instant then
+			Kocos.shutdown = t
+		else
+			-- TODO: graceful shutdown
+			Kocos.shutdown = t
+		end
+		return true
 	end
 end))
 
@@ -138,3 +167,4 @@ for _, s in ipairs(order) do
 end
 
 -- Shutdown!!!!
+computer.shutdown()
