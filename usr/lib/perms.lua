@@ -53,4 +53,6 @@ function perms.fromString(s)
 	return p
 end
 
+perms.everything = 511
+
 return perms

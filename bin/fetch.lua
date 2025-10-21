@@ -16,6 +16,8 @@ local user = shutils.getUser()
 
 local w, h = terminal.stdterm():getResolution()
 
+local libopk = require("libopk", true)
+
 table.insert(infoLines, "OS: " .. sysinfo.os)
 table.insert(infoLines, "Kernel: " .. sysinfo.kernel)
 table.insert(infoLines, "Host: " .. hostname)
@@ -23,6 +25,7 @@ table.insert(infoLines, "Uptime: " .. string.boottimefmt(k.uptime()))
 table.insert(infoLines, "Boot: " .. sysinfo.bootAddress)
 table.insert(infoLines, "User: " .. user)
 table.insert(infoLines, "Shell: " .. userdb.getShell(user))
+table.insert(infoLines, "Packages: " .. #libopk.getInstalled() .. " (opk)")
 table.insert(infoLines, "Home: " .. userdb.getHome(user))
 table.insert(infoLines, "Resolution: " .. w .. " x " .. h)
 table.insert(infoLines, "Free Memory: " .. string.memformat(sysinfo.memfree) .. " / " .. string.memformat(sysinfo.memtotal))

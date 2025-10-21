@@ -155,6 +155,18 @@ function io.close(file)
 	return file:close()
 end
 
+---@param filename string
+function io.lines(filename, ...)
+	local f = assert(io.open(filename, "r"))
+	local o = {...}
+	if #o == 0 then o[1] = "l" end
+	return function()
+		local t = {f:read(table.unpack(o))}
+		if #t == 0 then f:close() end
+		return table.unpack(t)
+	end
+end
+
 io.ftype = k.ftype
 io.list = k.list
 

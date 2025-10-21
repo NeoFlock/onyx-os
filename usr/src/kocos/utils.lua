@@ -86,7 +86,7 @@ function table.reverse(t)
 end
 
 local function isGoodKey(s)
-	return type(s) == "string" and string.format("%q", s) == ('"' .. s .. '"')
+	return string.contains(s, "^[_a-zA-Z][_a-zA-Z0-9]*$", true)
 end
 
 ---@param s string
@@ -150,6 +150,14 @@ function table.serialize(val, refs, colorinfo)
 	end
 end
 
+---@param s string
+function table.deserialize(s)
+	return assert(load("return " .. s, nil, nil, {
+		inf = 1/0,
+		nan = -(0/0),
+	}))()
+end
+
 ---@generic T
 ---@param t T[]
 ---@param v T
@@ -177,6 +185,13 @@ function string.memformat(memory, spacing)
 	end
 
 	return string.format("%.2f%s%s", memory, spacing, units[1])
+end
+
+---@param s string
+---@param sub string
+---@param pattern? boolean
+function string.contains(s, sub, pattern)
+	return string.find(s, sub, nil, not pattern) ~= nil
 end
 
 ---@param inputstr string
@@ -359,10 +374,10 @@ function readfile(filename, bufsize)
 end
 
 ---@param data string
----@return boolean?, string?
+---@return boolean, string?
 function writefile(filename, data)
 	local fd, err = syscall("open", filename, "w")
-	if not fd then return nil, err end
+	if not fd then return false, err end
 
 	local ok, err2 = syscall("write", fd, data)
 	syscall("close", fd)

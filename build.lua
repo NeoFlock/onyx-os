@@ -37,6 +37,7 @@ local buildInfo = {
 		type = "none",
 		deps = {
 			"kocos", -- need the kernel, obviously
+			"repo", -- the package repository
 		},
 	},
 	kocos = {
@@ -63,6 +64,25 @@ local buildInfo = {
 		},
 		out = "boot/vmkocos",
 		deps = {},
+	},
+	repo = {
+		type = "writelon",
+		---@type opk.repo
+		data = {
+			["test"] = {
+				description = "A test package to be installed",
+				version = "0.0.1",
+				authors = "",
+				license = "LGPL",
+				files = {
+					["/usr/bin/testprogram"] = {
+						type = "regular",
+						path = "etc/testprogram.lua",
+					},
+				},
+			},
+		},
+		out = "OPKREPO",
 	},
 }
 
@@ -103,6 +123,13 @@ local function runBuild(thing)
 		f:write(outcode)
 		f:flush()
 		f:close()
+	elseif entry.type == "writelon" then
+		local lon = table.serialize(entry.data)
+		local f = assert(io.open(entry.out, "wb"))
+		f:write(lon)
+		f:flush()
+		f:close()
+		print("Wrote " .. string.memformat(#lon) .. " into " .. entry.out)
 	end
 end
 
