@@ -25,7 +25,6 @@ local argv = {...}
 ---@field luaExecRT? string
 ---@field luaExecRTF? string
 ---@field hostname? string
----@field permissiveCrashes? boolean
 ---@field termStdColors? table<integer, integer>
 ---@field termDefaultFg? integer
 ---@field termDefaultBg? integer

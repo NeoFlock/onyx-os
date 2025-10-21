@@ -1,5 +1,10 @@
 Kocos.printkf(Kocos.L_INFO, "Booting %s...", _KVERSION)
 
+Kocos.printkf(Kocos.L_DEBUG, "Detecting hardware...")
+for addr, type in component.list() do
+	Kocos.printkf(Kocos.L_DEBUG, "%s %s", addr, type)
+end
+
 -- At this point we're supposed to mount the bootfs, either ramfs image or actual root
 Kocos.printk(Kocos.L_INFO, "mounting boot filesystem at /")
 
@@ -14,13 +19,8 @@ else
 end
 
 do
-	local dev = assert(component.proxy(rootDev))
-	Kocos.fs.root = assert(Kocos.fs.mount(dev), Kocos.errno.ENODRIVER)
-end
-
-Kocos.printkf(Kocos.L_DEBUG, "Detecting hardware...")
-for addr, type in component.list() do
-	Kocos.printkf(Kocos.L_DEBUG, "%s %s", addr, type)
+	assert(rootDev, "missing root device")
+	assert(Kocos.syscalls.chsysroot(rootDev))
 end
 
 local freeMem = computer.freeMemory()
@@ -70,9 +70,9 @@ local initPaths = {
 local initProc = Kocos.process.fork(Kocos.process.root, function()
 	Kocos.process.init.executionDeadline = math.huge
 	for _, path in ipairs(initPaths) do
-		if syscall("exists", path) then
+		if Kocos.syscalls.exists(path) then
 			Kocos.printkf(Kocos.L_INFO, "Running %s...", path)
-			assert(syscall("exec", path))
+			assert(Kocos.syscalls.exec(path))
 		end
 	end
 	Kocos.panickf("COULD NOT FIND INIT PROGRAM!\nSearched: %s\n", table.concat(initPaths, "\n"))
@@ -114,19 +114,7 @@ end
 while true do
 	local ok, err = xpcall(tick, debug.traceback)
 	if not ok then
-		local panic_ok = pcall(Kocos.panickf, "Tick error: %s\n", err)
-		if Kocos.args.permissiveCrashes then
-			if panic_ok then
-				-- eventually determine how bad the system is based
-				-- off the rate of panics
-			else
-				-- if panic handler also dies we might as well give up
-				justDie()
-			end
-		else
-			-- just die instantly
-			-- the state is so horrible its not worth preserving
-			justDie()
-		end
+		pcall(Kocos.panickf, "Tick error: %s\n", err)
+		justDie()
 	end
 end

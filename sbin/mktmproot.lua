@@ -7,6 +7,7 @@ local arg = ...
 local ramfs = require("ramfs")
 
 local importantFiles = {
+	"/sbin",
 	"/bin",
 	"/boot",
 	"/etc",

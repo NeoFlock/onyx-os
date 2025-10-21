@@ -776,7 +776,7 @@ function syscalls.chsysroot(addr)
 	if not newRoot then return false, errno.ENODRIVER end
 	local oldRoot = Kocos.fs.root
 	Kocos.fs.root = newRoot
-	Kocos.fs.unmount(oldRoot)
+	if oldRoot then Kocos.fs.unmount(oldRoot) end
 	return true
 end
 
