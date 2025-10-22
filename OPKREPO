@@ -223,10 +223,6 @@
 				type = "regular",
 				path = "bin/kill.lua",
 			},
-			["/bin/login.lua"] = {
-				type = "regular",
-				path = "bin/login.lua",
-			},
 			["/bin/nologin.lua"] = {
 				type = "regular",
 				path = "bin/nologin.lua",
@@ -317,6 +313,23 @@
 			},
 		},
 	},
+	login = {
+		version = "0.0.1",
+		description = "Ensure filesystem is correctly set up.",
+		authors = "IonutParau",
+		license = "LGPL",
+		dependencies = {"onit"},
+		files = {
+			["/bin/login.lua"] = {
+				type = "regular",
+				path = "bin/login.lua",
+			},
+			["/etc/onit.d/login.service"] = {
+				type = "regular",
+				path = "etc/onit.d/login.service",
+			},
+		},
+	},
 	initfs = {
 		version = "0.0.1",
 		description = "Ensure filesystem is correctly set up.",
@@ -339,7 +352,7 @@
 		description = "internet driver",
 		authors = "IonutParau",
 		license = "LGPL",
-		depends = {"onit"},
+		dependencies = {"onit"},
 		files = {
 			["/bin/internetd.lua"] = {
 				type = "regular",
@@ -356,7 +369,7 @@
 		description = "tunnel driver",
 		authors = "IonutParau",
 		license = "LGPL",
-		depends = {"onit"},
+		dependencies = {"onit"},
 		files = {
 			["/bin/tunneld.lua"] = {
 				type = "regular",
@@ -373,7 +386,7 @@
 		description = "sudo daemon",
 		authors = "IonutParau",
 		license = "LGPL",
-		depends = {"onit"},
+		dependencies = {"onit"},
 		files = {
 			["/bin/sudod.lua"] = {
 				type = "regular",
@@ -390,7 +403,7 @@
 		description = "Super User DO",
 		authors = "IonutParau",
 		license = "LGPL",
-		depends = {"sudod"},
+		dependencies = {"sudod"},
 		files = {
 			["/bin/sudo.lua"] = {
 				type = "regular",
@@ -525,10 +538,15 @@
 		description = "nicefs driver",
 		authors = "IonutParau",
 		license = "LGPL",
+		dependencies = {"onit"},
 		files = {
-			["/bin/mkfs.nicefs.lua"] = {
+			["/etc/onit.d/nicefs.service"] = {
 				type = "regular",
-				path = "bin/mkfs.nicefs.lua",
+				path = "etc/onit.d/nicefs.service",
+			},
+			["/sbin/nicefsd.lua"] = {
+				type = "regular",
+				path = "sbin/nicefsd.lua",
 			},
 		},
 	},
@@ -553,6 +571,18 @@
 			["/init.lua"] = {
 				type = "regular",
 				path = "init.lua",
+			},
+		},
+	},
+	["onyx-install"] = {
+		version = "0.0.1",
+		description = "ONYX installer",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/usr/bin/onyxinstall.lua"] = {
+				type = "regular",
+				path = "usr/bin/onyxinstall.lua",
 			},
 		},
 	},

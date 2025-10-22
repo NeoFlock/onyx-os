@@ -70,14 +70,55 @@ function userdb.parsePasswd(file)
 	return users
 end
 
+---@param file? string
+---@return userdb.group[]?, string?
+function userdb.parseGroup(file)
+	local data, err1 = readfile(file or "/etc/group")
+	if not data then return nil, err1 end
+
+	---@type userdb.group[]
+	local groups = {}
+	local lines = string.split(data, "\n")
+	for _, line in ipairs(lines) do
+		if #line > 0 then
+			local cols = string.split(line, ":")
+			if #cols ~= 4 then return nil, "format error" end
+			local gid = tonumber(cols[3])
+			if not gid then
+				return nil, "bad GID"
+			end
+			---@type userdb.group
+			local group = {
+				name = cols[1],
+				passphrase = cols[2],
+				gid = gid,
+				users = string.split(cols[4], ","),
+
+			}
+			table.insert(groups, group)
+		end
+	end
+	return groups
+end
+
 ---@param users userdb.user[]
 ---@param file? string
 function userdb.writePasswd(users, file)
 	local lines = {}
 	for _, user in ipairs(users) do
-		table.insert(lines, string.format("%s:%s:%d:%d:%s:%s:%s", user.name, user.password, user.uid, user.gid, user.home, user.shell))
+		table.insert(lines, string.format("%s:%s:%d:%d:%s:%s:%s", user.name, user.password, user.uid, user.gid, user.userInfo, user.home, user.shell))
 	end
 	return writefile(file or "/etc/passwd", table.concat(lines, "\n") .. "\n")
+end
+
+---@param groups userdb.group[]
+---@param file? string
+function userdb.writeGroup(groups, file)
+	local lines = {}
+	for _, group in ipairs(groups) do
+		table.insert(lines, string.format("%s:%s:%d:%s", group.name, group.passphrase, group.gid, table.concat(group.users, ",")))
+	end
+	return writefile(file or "/etc/group", table.concat(lines, "\n") .. "\n")
 end
 
 ---@param hash string
