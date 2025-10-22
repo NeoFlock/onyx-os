@@ -41,6 +41,7 @@
 ---@field version string
 
 local libopk = {}
+local perms = require("perms")
 
 function libopk.getRepositories()
 	---@type opk.repoData[]
@@ -88,6 +89,19 @@ function libopk.downloadRepoFile(data, file)
 		local truepath = k.join(data.url, file)
 		return readfile(truepath)
 	end
+	if data.type == "http" then
+		local f = ""
+		local sock = assert(k.socket("AF_INET", "http", "http"))
+		assert(k.connect(sock, {address = data.url .. "/" .. file, port = 0}))
+		while true do
+			local chunk, err = k.read(sock, math.huge)
+			if err then error(err) end
+			if not chunk then break end
+			f = f .. chunk
+		end
+		k.close(sock)
+		return f
+	end
 	-- TODO: other ones
 	return nil, "bad repo type"
 end
@@ -99,6 +113,10 @@ function libopk.cacheRepo(data)
 	local cachePath = libopk.findRepoCache(data)
 	local toCache, err = libopk.downloadRepoFile(data, "OPKREPO")
 	if not toCache then return false, err end
+	if not k.exists(cachePath) then
+		local ok, err = os.touch(cachePath, perms.fromString("rwxr--r--"))
+		if not ok then return false, err end
+	end
 	return writefile(cachePath, toCache)
 end
 

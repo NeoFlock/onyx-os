@@ -64,7 +64,7 @@ local function sync()
 	for _, repo in ipairs(repos) do
 		io.write("Caching " .. repo.name .. "...")
 		io.flush()
-		libopk.cacheRepo(repo)
+		assert(libopk.cacheRepo(repo))
 		print("DONE")
 	end
 end

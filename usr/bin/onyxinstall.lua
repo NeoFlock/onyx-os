@@ -204,7 +204,8 @@ userdb.writeGroup(groups, "/mnt/etc/group")
 print("Setting up repositories")
 ---@type string[]
 local repos = {
-	"local https://github.com/NeoFlock/onyx-os/tree/main",
+	"onyx https://raw.githubusercontent.com/NeoFlock/onyx-os/refs/heads/main",
+	"media /media ?",
 }
 
 assert(writefile("/mnt/etc/opk/repositories", table.concat(repos, "\n") .. "\n"))
