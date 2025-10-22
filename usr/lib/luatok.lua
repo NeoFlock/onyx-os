@@ -13,25 +13,28 @@ local lib = {}
 
 ---@type string[]
 lib.keywords = {
+	"and",
+	"break",
 	"do",
-	"end",
-	"if",
-	"then",
 	"else",
 	"elseif",
-	"while",
-	"repeat",
-	"until",
-	"local",
-	"function",
-	"for",
-	"in",
-	"return",
-	"or",
-	"and",
-	"true",
+	"end",
 	"false",
+	"for",
+	"function",
+	"goto",
+	"if",
+	"in",
+	"local",
 	"nil",
+	"not",
+	"or",
+	"repeat",
+	"return",
+	"then",
+	"true",
+	"until",
+	"while",
 }
 
 ---@type string[]
@@ -79,9 +82,12 @@ function lib.isalpha(c)
 end
 
 ---@param c string
-function lib.isnum(c)
+function lib.isnum(c, hex)
 	c = c:lower()
 	local b = c:byte()
+	if hex then
+		if b >= string.byte('a') and b <= string.byte('f') then return true end
+	end
 	return b >= string.byte('0') and b <= string.byte('9')
 end
 
@@ -183,13 +189,15 @@ function lib.tokenAt(code, i)
 	end
 	if lib.isnum(c) then
 		local len = 1
+		local hex = false
 		if code:sub(i, i+1) == "0x" then
 			len = 2
+			hex = true
 		end
 		while true do
 			local c2 = code:sub(i+len, i+len)
 			if c2 == "" then break end
-			if not lib.isnum(c2) then break end
+			if not lib.isnum(c2, hex) then break end
 			len = len + 1
 		end
 		if c:sub(i+len, i+len) == "." then

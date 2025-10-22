@@ -66,12 +66,9 @@ local buildInfo = {
 	},
 }
 
-local min = os.getenv("ONYX_MIN")
-
 ---@param src string
 ---@return string
 local function luamin(src)
-	if not min then return src end
 	local l = require("luamin")
 	return l(src)
 end
