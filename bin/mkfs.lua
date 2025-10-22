@@ -4,6 +4,7 @@
 local args = {...}
 local shutils = require("shutils")
 
+-- This is basically the "default" filesystem
 local fsType = os.getenv("MKFS_DEFAULT_FS") or "nicefs"
 
 if args[1] == "-h" or args[1] == "--help" or not args[1] then
@@ -11,8 +12,6 @@ if args[1] == "-h" or args[1] == "--help" or not args[1] then
 	print("Make a filesystem. Current default FS (set by MKFS_DEFAULT_FS) is", fsType)
 	return 0
 end
-
--- This is basically the "default" filesystem
 
 if args[1] == "-t" then
 	table.remove(args, 1)

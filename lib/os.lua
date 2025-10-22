@@ -3,6 +3,7 @@
 
 os.touch = k.touch
 os.mkdir = k.mkdir
+os.remove = k.remove
 
 function os.tmpname()
 	local p

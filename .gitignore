@@ -1,3 +1,2 @@
-/boot/vmkocos
 /run_ocelot.sh
-/OPKREPO
+# we show the kernel and the OPKREPO file so the git repo is a valid ONYX repo

@@ -12,6 +12,8 @@
 ---@field files? table<string, opk.file>
 ---@field preinstall? string[]
 ---@field postinstall? string[]
+---@field preuninstall? string[]
+---@field postuninstall? string[]
 --- Internal
 ---@field repo? opk.repoData
 
