@@ -24,7 +24,7 @@ return function(code)
 
 			if tok.type ~= "comment" and tok.type ~= "whitespace" then
 				if table.contains(theBig3, tok.type) and table.contains(theBig3, lastToken) then
-					table.insert(buf, "\n")
+					table.insert(buf, " ")
 				end
 				table.insert(buf, data)
 				lastToken = tok.type
