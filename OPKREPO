@@ -1,1 +1,559 @@
-{test = {description = "A test package to be installed", version = "0.0.1", license = "LGPL", files = {["/usr/bin/testprogram"] = {path = "etc/testprogram.lua", type = "regular"}}, authors = ""}}
+{
+	luart = {
+		version = "0.0.1",
+		description = "Lua Runtime Library",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/lib/luart.lua"] = {
+				type = "regular",
+				path = "lib/luart.lua",
+			},
+			["/lib/buffer.lua"] = {
+				type = "regular",
+				path = "lib/buffer.lua",
+			},
+			["/lib/os.lua"] = {
+				type = "regular",
+				path = "lib/os.lua",
+			},
+			["/lib/io.lua"] = {
+				type = "regular",
+				path = "lib/io.lua",
+			},
+			["/lib/conf.lua"] = {
+				type = "regular",
+				path = "lib/conf.lua",
+			},
+		},
+	},
+	libopk = {
+		version = "0.0.1",
+		description = "ONYX package keeper helper library",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/usr/lib/libopk.lua"] = {
+				type = "regular",
+				path = "usr/lib/libopk.lua",
+			},
+		},
+	},
+	opk = {
+		version = "0.0.1",
+		description = "ONYX package keeper",
+		authors = "IonutParau",
+		license = "LGPL",
+		dependencies = {"libopk"},
+		files = {
+			["/bin/opk.lua"] = {
+				type = "regular",
+				path = "bin/opk.lua",
+			},
+		},
+	},
+	onit = {
+		version = "0.0.1",
+		description = "ONYX package keeper",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/sbin/onit.lua"] = {
+				type = "regular",
+				path = "sbin/onit.lua",
+			},
+			["/bin/onit-analyze.lua"] = {
+				type = "regular",
+				path = "bin/onit-analyze.lua",
+			},
+			["/etc/onit.d"] = {
+				type = "directory",
+			},
+		},
+	},
+	libash = {
+		version = "0.0.1",
+		description = "ash helper library",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/usr/lib/libash.lua"] = {
+				type = "regular",
+				path = "usr/lib/libash.lua",
+			},
+		},
+	},
+	ash = {
+		version = "0.0.1",
+		description = "Advanced SHell",
+		authors = "IonutParau",
+		license = "LGPL",
+		dependencies = {"libash"},
+		files = {
+			["/bin/ash.lua"] = {
+				type = "regular",
+				path = "bin/ash.lua",
+			},
+		},
+	},
+	corelibs = {
+		version = "0.0.1",
+		description = "Core libraries useful for various programs",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/usr/lib/keyboard.lua"] = {
+				type = "regular",
+				path = "usr/lib/keyboard.lua",
+			},
+			["/usr/lib/perms.lua"] = {
+				type = "regular",
+				path = "usr/lib/perms.lua",
+			},
+			["/usr/lib/ramfs.lua"] = {
+				type = "regular",
+				path = "usr/lib/ramfs.lua",
+			},
+			["/usr/lib/readline.lua"] = {
+				type = "regular",
+				path = "usr/lib/readline.lua",
+			},
+			["/usr/lib/shutils.lua"] = {
+				type = "regular",
+				path = "usr/lib/shutils.lua",
+			},
+			["/usr/lib/tar.lua"] = {
+				type = "regular",
+				path = "usr/lib/tar.lua",
+			},
+			["/usr/lib/terminal.lua"] = {
+				type = "regular",
+				path = "usr/lib/terminal.lua",
+			},
+			["/usr/lib/userdb.lua"] = {
+				type = "regular",
+				path = "usr/lib/userdb.lua",
+			},
+		},
+	},
+	coreutils = {
+		version = "0.0.1",
+		description = "Core utilities",
+		authors = "IonutParau",
+		license = "LGPL",
+		dependencies = {"corelibs"},
+		files = {
+			["/usr/bin/env"] = {
+				type = "regular",
+				path = "usr/bin/env",
+			},
+			["/sbin/mktmproot.lua"] = {
+				type = "regular",
+				path = "sbin/mktmproot.lua",
+			},
+			["/sbin/mountdev.lua"] = {
+				type = "regular",
+				path = "sbin/mountdev.lua",
+			},
+			["/sbin/umount.lua"] = {
+				type = "regular",
+				path = "sbin/umount.lua",
+			},
+			["/bin/caddress.lua"] = {
+				type = "regular",
+				path = "bin/caddress.lua",
+			},
+			["/bin/cat.lua"] = {
+				type = "regular",
+				path = "bin/cat.lua",
+			},
+			["/bin/chboot.lua"] = {
+				type = "regular",
+				path = "bin/chboot.lua",
+			},
+			["/bin/chroot.lua"] = {
+				type = "regular",
+				path = "bin/chroot.lua",
+			},
+			["/bin/chinit.lua"] = {
+				type = "regular",
+				path = "bin/chinit.lua",
+			},
+			["/bin/chsysroot.lua"] = {
+				type = "regular",
+				path = "bin/chsysroot.lua",
+			},
+			["/bin/clear.lua"] = {
+				type = "regular",
+				path = "bin/clear.lua",
+			},
+			["/bin/colors.lua"] = {
+				type = "regular",
+				path = "bin/colors.lua",
+			},
+			["/bin/cp.lua"] = {
+				type = "regular",
+				path = "bin/cp.lua",
+			},
+			["/bin/daemons.lua"] = {
+				type = "regular",
+				path = "bin/daemons.lua",
+			},
+			["/bin/echo.lua"] = {
+				type = "regular",
+				path = "bin/echo.lua",
+			},
+			["/bin/fork.lua"] = {
+				type = "regular",
+				path = "bin/fork.lua",
+			},
+			["/bin/free.lua"] = {
+				type = "regular",
+				path = "bin/free.lua",
+			},
+			["/bin/ftype.lua"] = {
+				type = "regular",
+				path = "bin/ftype.lua",
+			},
+			["/bin/hostname.lua"] = {
+				type = "regular",
+				path = "bin/hostname.lua",
+			},
+			["/bin/kill.lua"] = {
+				type = "regular",
+				path = "bin/kill.lua",
+			},
+			["/bin/login.lua"] = {
+				type = "regular",
+				path = "bin/login.lua",
+			},
+			["/bin/nologin.lua"] = {
+				type = "regular",
+				path = "bin/nologin.lua",
+			},
+			["/bin/ls.lua"] = {
+				type = "regular",
+				path = "bin/ls.lua",
+			},
+			["/bin/lscomp.lua"] = {
+				type = "regular",
+				path = "bin/lscomp.lua",
+			},
+			["/bin/lua.lua"] = {
+				type = "regular",
+				path = "bin/lua.lua",
+			},
+			["/bin/mkfs.lua"] = {
+				type = "regular",
+				path = "bin/mkfs.lua",
+			},
+			["/bin/mounts.lua"] = {
+				type = "regular",
+				path = "bin/mounts.lua",
+			},
+			["/bin/pids.lua"] = {
+				type = "regular",
+				path = "bin/pids.lua",
+			},
+			["/bin/poweroff.lua"] = {
+				type = "regular",
+				path = "bin/poweroff.lua",
+			},
+			["/bin/procinfo.lua"] = {
+				type = "regular",
+				path = "bin/procinfo.lua",
+			},
+			["/bin/pwd.lua"] = {
+				type = "regular",
+				path = "bin/pwd.lua",
+			},
+			["/bin/random.lua"] = {
+				type = "regular",
+				path = "bin/random.lua",
+			},
+			["/bin/resolution.lua"] = {
+				type = "regular",
+				path = "bin/resolution.lua",
+			},
+			["/bin/rm.lua"] = {
+				type = "regular",
+				path = "bin/rm.lua",
+			},
+			["/bin/sleep.lua"] = {
+				type = "regular",
+				path = "bin/sleep.lua",
+			},
+			["/bin/stat.lua"] = {
+				type = "regular",
+				path = "bin/stat.lua",
+			},
+			["/bin/sync.lua"] = {
+				type = "regular",
+				path = "bin/sync.lua",
+			},
+			["/bin/syscalls.lua"] = {
+				type = "regular",
+				path = "bin/syscalls.lua",
+			},
+			["/bin/sysinfo.lua"] = {
+				type = "regular",
+				path = "bin/sysinfo.lua",
+			},
+			["/bin/time.lua"] = {
+				type = "regular",
+				path = "bin/time.lua",
+			},
+			["/bin/vfree.lua"] = {
+				type = "regular",
+				path = "bin/vfree.lua",
+			},
+			["/bin/whoami.lua"] = {
+				type = "regular",
+				path = "bin/whoami.lua",
+			},
+			["/bin/mkramfsdev.lua"] = {
+				type = "regular",
+				path = "bin/mkramfsdev.lua",
+			},
+		},
+	},
+	initfs = {
+		version = "0.0.1",
+		description = "Ensure filesystem is correctly set up.",
+		authors = "IonutParau",
+		license = "LGPL",
+		dependencies = {"onit"},
+		files = {
+			["/sbin/initfs.lua"] = {
+				type = "regular",
+				path = "sbin/initfs.lua",
+			},
+			["/etc/onit.d/initfs.service"] = {
+				type = "regular",
+				path = "etc/onit.d/initfs.service",
+			},
+		},
+	},
+	internetd = {
+		version = "0.0.1",
+		description = "internet driver",
+		authors = "IonutParau",
+		license = "LGPL",
+		depends = {"onit"},
+		files = {
+			["/bin/internetd.lua"] = {
+				type = "regular",
+				path = "bin/internetd.lua",
+			},
+			["/etc/onit.d/internetd.service"] = {
+				type = "regular",
+				path = "etc/onit.d/internetd.service",
+			},
+		},
+	},
+	tunneld = {
+		version = "0.0.1",
+		description = "tunnel driver",
+		authors = "IonutParau",
+		license = "LGPL",
+		depends = {"onit"},
+		files = {
+			["/bin/tunneld.lua"] = {
+				type = "regular",
+				path = "bin/tunneld.lua",
+			},
+			["/etc/onit.d/tunneld.service"] = {
+				type = "regular",
+				path = "etc/onit.d/tunneld.service",
+			},
+		},
+	},
+	sudod = {
+		version = "0.0.1",
+		description = "sudo daemon",
+		authors = "IonutParau",
+		license = "LGPL",
+		depends = {"onit"},
+		files = {
+			["/bin/sudod.lua"] = {
+				type = "regular",
+				path = "bin/sudod.lua",
+			},
+			["/etc/onit.d/sudod.service"] = {
+				type = "regular",
+				path = "etc/onit.d/sudod.service",
+			},
+		},
+	},
+	sudo = {
+		version = "0.0.1",
+		description = "Super User DO",
+		authors = "IonutParau",
+		license = "LGPL",
+		depends = {"sudod"},
+		files = {
+			["/bin/sudo.lua"] = {
+				type = "regular",
+				path = "bin/sudo.lua",
+			},
+		},
+	},
+	libluatok = {
+		version = "0.0.1",
+		description = "Lua lexer",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/usr/lib/luatok.lua"] = {
+				type = "regular",
+				path = "usr/lib/luatok.lua",
+			},
+		},
+	},
+	libluamin = {
+		version = "0.0.1",
+		description = "Lua minification library",
+		authors = "IonutParau",
+		license = "LGPL",
+		dependencies = {"libluatok"},
+		files = {
+			["/usr/lib/luamin.lua"] = {
+				type = "regular",
+				path = "usr/lib/luamin.lua",
+			},
+		},
+	},
+	minify = {
+		version = "0.0.1",
+		description = "Minify",
+		authors = "IonutParau",
+		license = "LGPL",
+		dependencies = {"libluamin"},
+		files = {
+			["/bin/minify.lua"] = {
+				type = "regular",
+				path = "bin/minify.lua",
+			},
+		},
+	},
+	fetch = {
+		version = "0.0.1",
+		description = "Fetch utility",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/bin/fetch.lua"] = {
+				type = "regular",
+				path = "bin/fetch.lua",
+			},
+		},
+	},
+	highlight = {
+		version = "0.0.1",
+		description = "Lua syntax highlighter",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/bin/highlight.lua"] = {
+				type = "regular",
+				path = "bin/highlight.lua",
+			},
+		},
+	},
+	unload = {
+		version = "0.0.1",
+		description = "Package cache remover",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/bin/unload.lua"] = {
+				type = "regular",
+				path = "bin/unload.lua",
+			},
+		},
+	},
+	wget = {
+		version = "0.0.1",
+		description = "Download files over networks",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/bin/wget.lua"] = {
+				type = "regular",
+				path = "bin/wget.lua",
+			},
+		},
+	},
+	strace = {
+		version = "0.0.1",
+		description = "Trace syscalls used by commands",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/bin/strace.lua"] = {
+				type = "regular",
+				path = "bin/strace.lua",
+			},
+		},
+	},
+	forkbomb = {
+		version = "0.0.1",
+		description = "Destroy a computer within salvage",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/bin/forkbomb.lua"] = {
+				type = "regular",
+				path = "bin/forkbomb.lua",
+			},
+		},
+	},
+	["mkfs-nicefs"] = {
+		version = "0.0.1",
+		description = "mkfs for nicefs",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/bin/mkfs.nicefs.lua"] = {
+				type = "regular",
+				path = "bin/mkfs.nicefs.lua",
+			},
+		},
+	},
+	nicefsd = {
+		version = "0.0.1",
+		description = "nicefs driver",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/bin/mkfs.nicefs.lua"] = {
+				type = "regular",
+				path = "bin/mkfs.nicefs.lua",
+			},
+		},
+	},
+	vmkocos = {
+		version = "0.0.1",
+		description = "KOCOS kernel",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/boot/vmkocos"] = {
+				type = "regular",
+				path = "boot/vmkocos",
+			},
+		},
+	},
+	["onyx-boot"] = {
+		version = "0.0.1",
+		description = "ONYX bootloader",
+		authors = "IonutParau",
+		license = "LGPL",
+		files = {
+			["/init.lua"] = {
+				type = "regular",
+				path = "init.lua",
+			},
+		},
+	},
+}

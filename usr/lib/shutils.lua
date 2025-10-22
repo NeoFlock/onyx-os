@@ -33,7 +33,7 @@ end
 
 ---@param user? string
 function shutils.defaultSearchPath(user)
-	local sys = "/sbin:/usr/local/bin:/usr/bin:/bin:/tmp/bin:/mnt/bin"
+	local sys = "/sbin:/usr/local/bin:/usr/bin:/bin"
 	if user then
 		sys = "/home/" .. user .. "/bin:" .. sys
 	end

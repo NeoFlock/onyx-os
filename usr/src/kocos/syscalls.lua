@@ -515,8 +515,6 @@ function syscalls.exec(path, argv, env, namespace)
 	env = env or table.copy(cur.env)
 	namespace = namespace or cur.namespace
 
-	path = process.resolve(cur, path)
-
 	-- TODO: check read + exec perms
 
 	local ok, err = process.exec(cur, path, argv, env, namespace)

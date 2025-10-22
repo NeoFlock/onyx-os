@@ -47,6 +47,21 @@ function os.executeBin(bin, argv, env, namespace)
 	return exit == 0, "exit", exit
 end
 
+---@param cmd string
+---@param argv? string[]
+---@param env? table<string, string>
+---@param namespace? _G
+function os.executeSearchedBin(cmd, argv, env, namespace)
+	local shutils = require("shutils")
+	local bin = shutils.search(cmd)
+	if not bin then error("no such command: " .. bin) end
+	local child = assert(k.fork(function()
+		assert(k.exec(bin, argv, env, namespace))
+	end))
+	local exit = assert(k.waitpid(child))
+	return exit == 0, "exit", exit
+end
+
 ---@param command string
 function os.execute(command)
 	local userdb = require("userdb")

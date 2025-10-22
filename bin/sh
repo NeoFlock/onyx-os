@@ -1,6 +1,0 @@
---!lua
-
--- Symlinks may not always be available, so, we just exec
-local argv = assert(k.argv())
-
-assert(k.exec("/bin/ash.lua", argv))

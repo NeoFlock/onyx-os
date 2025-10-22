@@ -41,6 +41,7 @@ if (not action) or action == "help" then
 	print("\topk query <package> - Display package information")
 	print("\topk add-repo <name> <url> <opts?> - Add a repository (opts can be nothing or ? for optional)")
 	print("\topk rm-repo [...names] - Remove repositories")
+	print("\topk strap <root> - Creates a bare-minimum filesystem suitable for package installation")
 	return 0
 end
 
@@ -74,14 +75,14 @@ end
 local function computeToInstall(all, list, package)
 	if table.contains(list, package) then return end
 
-	table.insert(list, package)
-
 	local info = all[package]
 	if info and info.dependencies then
 		for _, dep in ipairs(info.dependencies) do
 			computeToInstall(all, list, dep)
 		end
 	end
+
+	table.insert(list, package)
 end
 
 ---@param all opk.repo
@@ -111,8 +112,16 @@ local function install(all, p)
 				-- TODO: download first, then commit
 				local data = assert(libopk.downloadRepoFile(info.repo, file.path))
 				local existed = k.exists(path)
-				if not existed then assert(k.touch(path, file.perms or perms.everything)) end
-				assert(writefile(path, data))
+				if not existed then assert(k.touch(path, perms.fromString(file.perms or "rwxrwxrwx"))) end
+				if (file.default and not existed) or (not file.default) then
+					assert(writefile(path, data))
+				end
+			end
+			if file.type == "directory" then
+				local existed = k.exists(path)
+				if not existed then
+					assert(k.mkdir(path, perms.fromString(file.perms or "rwxrwxrwx")))
+				end
 			end
 		end
 	end
@@ -160,9 +169,8 @@ local function uninstall(all, p)
 end
 
 ---@param all opk.repo
-local function update(all, onlyCheck, autoAccept)
-	local installed = libopk.getInstalled()
-
+---@param installed opk.installedData[]
+local function update(all, installed, onlyCheck, autoAccept)
 	---@type opk.installedData[]
 	local toUpdate = {}
 
@@ -201,7 +209,7 @@ local function update(all, onlyCheck, autoAccept)
 		install(all, p)
 	end
 
-	assert(libopk.writeInstalled(installed))
+	assert(libopk.writeInstalled(root, installed))
 end
 
 ---@param name string
@@ -264,11 +272,11 @@ if action == "list" then
 	end
 
 	if worldOnly then
-		for _, pack in ipairs(libopk.getWorld()) do
+		for _, pack in ipairs(libopk.getWorld(root)) do
 			if shouldBeIncluded(pack) then print(pack) end
 		end
 	elseif installedOnly then
-		for _, installed in ipairs(libopk.getInstalled()) do
+		for _, installed in ipairs(libopk.getInstalled(root)) do
 			if shouldBeIncluded(installed.package) then print(installed.package, "v" .. installed.version) end
 		end
 	else
@@ -277,8 +285,10 @@ if action == "list" then
 			print("Error:", err)
 			return 1
 		end
-		for p in pairs(everyPackage) do
-			if shouldBeIncluded(p) then print(p) end
+		for p, info in pairs(everyPackage) do
+			if shouldBeIncluded(p) then
+				print(p, "v" .. info.version, "-", info.repo.name, "-", info.authors, "-", info.license, "-", info.description)
+			end
 		end
 	end
 	return 0
@@ -290,17 +300,25 @@ if action == "update" then
 		print("Error:", err)
 		return 1
 	end
-	update(all, nil, args[1] == "-c")
+	update(all, libopk.getInstalled(root), nil, args[1] == "-c")
 	return 0
 end
 
 if action == "add" then
-	local world = libopk.getWorld()
-	local installed = libopk.getInstalled()
+	local world = libopk.getWorld(root)
+	local installed = libopk.getInstalled(root)
 	local all, err = libopk.everyPackage()
 	if not all then
 		print("Error:", err)
 		return 1
+	end
+
+	for _, p in ipairs(args) do
+		if not all[p] then
+			print("No such package:", p)
+			print("Check that the correct repositories are enabled")
+			return 1
+		end
 	end
 
 	local toInstall = {}
@@ -325,10 +343,10 @@ if action == "add" then
 		end
 	end
 
-	assert(libopk.writeWorld(world))
-	assert(libopk.writeInstalled(installed))
+	assert(libopk.writeWorld(root, world))
+	assert(libopk.writeInstalled(root, installed))
 
-	update(all)
+	update(all, installed)
 
 	return 0
 end
@@ -342,8 +360,8 @@ if action == "rm" then
 		return 1
 	end
 
-	local world = libopk.getWorld()
-	local installed = libopk.getInstalled()
+	local world = libopk.getWorld(root)
+	local installed = libopk.getInstalled(root)
 
 	---@type string[]
 	local newWorld = {}
@@ -366,8 +384,24 @@ if action == "rm" then
 		uninstall(all, p)
 	end
 
-	assert(libopk.writeWorld(newWorld))
-	assert(libopk.writeInstalled(newInstalled))
+	assert(libopk.writeWorld(root, newWorld))
+	assert(libopk.writeInstalled(root, newInstalled))
+	return 0
+end
+
+if action == "strap" then
+	os.mkdir(root .. "/sbin", perms.fromString("rwxr-xr-x"))
+	os.mkdir(root .. "/bin", perms.fromString("rwxr-xr-x"))
+	os.mkdir(root .. "/lib", perms.fromString("rwxr-xr-x"))
+	os.mkdir(root .. "/usr", perms.fromString("rwxr-xr-x"))
+	os.mkdir(root .. "/usr/bin", perms.fromString("rwxr-xr-x"))
+	os.mkdir(root .. "/usr/lib", perms.fromString("rwxr-xr-x"))
+	os.mkdir(root .. "/usr/src", perms.fromString("rwxrwxrwx"))
+	os.mkdir(root .. "/etc", perms.fromString("rwxrwxrwx"))
+	os.mkdir(root .. "/etc/opk", perms.fromString("rwxr--r--"))
+	os.touch(root .. "/etc/opk/world", perms.fromString("rwxr--r--"))
+	os.touch(root .. "/etc/opk/installed", perms.fromString("rwxr--r--"))
+	os.touch(root .. "/etc/opk/repositories", perms.fromString("rwxr--r--"))
 	return 0
 end
 

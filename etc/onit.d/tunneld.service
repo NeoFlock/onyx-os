@@ -1,5 +1,5 @@
-name=socktunneld
+name=tunneld
 type=spawn
 groups=setup,network
 needs=@initfs
-exec=/bin/socktunneld.lua
+exec=/bin/tunneld.lua

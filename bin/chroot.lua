@@ -10,6 +10,8 @@ local uinfo = assert(userdb.getinfo(shutils.getUser()), "unknown user")
 local args = {...}
 local root = table.remove(args, 1)
 assert(root, "missing root")
+
+assert(k.chroot(root))
 local cmd = table.remove(args, 1)
 
 if cmd then
@@ -18,5 +20,4 @@ else
 	cmd = uinfo.shell
 end
 
-assert(k.chroot(root))
 assert(k.exec(cmd, args))

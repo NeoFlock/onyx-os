@@ -1,0 +1,5 @@
+name=internetd
+type=spawn
+groups=setup,network
+needs=@initfs
+exec=/bin/internetd.lua
