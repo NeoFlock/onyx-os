@@ -61,7 +61,8 @@ struct dataBlock {
 singled linked list of blocks which can be re-used. `activeBlockCount` represents the number of blocks which are in active use, and should be at least 2, as
 sector 1 and the superblock do count. This, times the sector size, is the total space used of the storage volume.
 
-For directories, the file size is the amount of *entries*.
+For directories, the file size should be 0. Empty filename means NULL entry.
+Block list is NULL-terminated.
 
 # Booting
 

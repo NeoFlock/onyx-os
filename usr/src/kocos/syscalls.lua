@@ -433,7 +433,7 @@ end
 ---@param path string
 ---@return string
 function syscalls.absolutepath(path)
-	return process.resolve(process.current, path)
+	return Kocos.fs.fromRoot(process.resolve(process.current, path), process.current.root)
 end
 
 ---@param path string
@@ -442,6 +442,11 @@ function syscalls.canonical(path)
 	return Kocos.fs.canonical(path)
 end
 
+---@param path string
+---@return string
+function syscalls.parentPath(path)
+	return Kocos.fs.parentPath(path)
+end
 
 ---@param s string
 ---@vararg string

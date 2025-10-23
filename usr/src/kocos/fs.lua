@@ -29,6 +29,7 @@ fs.FTYPE_CHR = "chardev"
 ---@field size integer
 ---@field lastModified integer
 ---@field createdAt integer
+---@field diskSize integer
 ---@field diskUsed integer
 ---@field diskTotal integer
 --- Currently unused
@@ -182,6 +183,15 @@ end
 
 function fs.join(...)
 	return fs.canonical(table.concat({...}, "/"))
+end
+
+---@param p string
+---@return string, string
+function fs.parentPath(p)
+	p = fs.canonical(p):sub(2)
+	local parts = string.split(p, "/")
+	local name = table.remove(parts, 1)
+	return "/" .. table.concat(parts, "/"), name
 end
 
 ---@param path string
@@ -502,13 +512,15 @@ function fs._defaultManagedFS(req, ...)
 	if req == "FS-stat" then
 		---@type Kocos.device, string
 		local dev, path = ...
+		local size = dev.size(path) or 0
 		---@type Kocos.fs.stat
 		return {
 			deviceAddress = dev.address,
 			deviceType = dev.type,
-			size = dev.size(path) or 0, -- dirs are 0-sized lol
+			size = size, -- dirs are 0-sized lol
 			createdAt = 0,
 			lastModified = dev.lastModified(path),
+			diskSize = size,
 			diskUsed = dev.spaceUsed(),
 			diskTotal = dev.spaceTotal(),
 			inode = math.random(0, 2^32-1),

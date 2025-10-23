@@ -10,6 +10,7 @@ for _, path in ipairs(paths) do
 	print("Size:", string.memformat(s.size))
 	print("Created at:", os.date("%x %X", math.floor(s.createdAt / 1000)))
 	print("Last Modified:", os.date("%x %X", math.floor(s.lastModified / 1000)))
+	print("Size On Disk:", string.memformat(s.diskSize))
 	print("Disk Used:", string.memformat(s.diskUsed))
 	print("Disk Total:", string.memformat(s.diskTotal))
 	print("Ino:", s.inode)
