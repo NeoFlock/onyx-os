@@ -69,6 +69,7 @@ local buildInfo = {
 ---@param src string
 ---@return string
 local function luamin(src)
+	if os.getenv("ONYX_NOMIN") then return src end
 	local l = require("luamin")
 	return l(src)
 end

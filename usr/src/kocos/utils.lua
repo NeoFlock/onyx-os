@@ -86,7 +86,7 @@ function table.reverse(t)
 end
 
 local function isGoodKey(s)
-	return string.contains(s, "^[_a-zA-Z][_a-zA-Z0-9]*$", true)
+	return type(s) == "string" and string.contains(s, "^[_a-zA-Z][_a-zA-Z0-9]*$", true)
 end
 
 ---@param s string
