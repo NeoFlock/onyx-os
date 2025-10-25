@@ -222,9 +222,15 @@ end
 local primCache = {}
 
 function component._defaultHandler(ev, addr, type)
+	if ev == "component_added" then
+		if primCache[type] then return end
+		primCache[type] = component.proxy(addr)
+		Kocos.event.push("primary_added", type)
+	end
 	if ev == "component_removed" then
 		if not primCache[type] then return end
 		if primCache[type].address ~= addr then return end
+		Kocos.event.push("primary_removed", type)
 		primCache[type] = nil
 	end
 end

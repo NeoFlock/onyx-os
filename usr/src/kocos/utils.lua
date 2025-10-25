@@ -244,6 +244,16 @@ function string.rightpad(s, l, c)
     return s .. string.rep(c, l - #s)
 end
 
+---@param n integer
+function string.random(n)
+	local t = {""}
+	for _=1,n do
+		table.insert(t, string.char(math.random(0, 255)))
+	end
+	-- uses a lua_Buffer internally which is a dynamic array, as opposed to copying n^2 bytes
+	return table.concat(t)
+end
+
 ---@param x number
 ---@param min number
 ---@param max number

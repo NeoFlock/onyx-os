@@ -16,7 +16,7 @@ assert(k.mklistener(function(ev, id)
 	end
 end))
 
-local errnos = k.errnos()
+local errnos = require("errnos")
 
 assert(k.mkdriver(function(ev, ...)
 	if ev == "NET-socket" then

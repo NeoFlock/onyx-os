@@ -856,6 +856,13 @@ function syscalls.getprocs()
 	return pids
 end
 
+---@param pid integer
+function syscalls.isproot(pid)
+	local p = process.allProcs[pid]
+	if not p then return false end
+	return process.isRoot(p)
+end
+
 function syscalls.getpid()
 	return process.current.pid
 end
