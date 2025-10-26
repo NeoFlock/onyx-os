@@ -65,7 +65,7 @@ function blake3.round(state, m)
 
 	-- diagionals
 	blake3.g(state,1,6,11,16,m[9],m[10])
-	blake3.g(state,2,7,12,13,m[12],m[13])
+	blake3.g(state,2,7,12,13,m[11],m[12])
 	blake3.g(state,3,8,9,14,m[13],m[14])
 	blake3.g(state,4,5,10,15,m[15],m[16])
 end
@@ -229,7 +229,7 @@ function chunkstate.output(self)
 		inputChainingValue = table.copy(self.chainingValue),
 		blockWords = blake3.wordsFromLEBytes(self.block, 16),
 		counter = self.chunkCounter,
-		blockLen = #self.block,
+		blockLen = blake3.mk32bit(#self.block),
 		flags = self.flags | chunkstate.startflag(self) | blake3.CHUNK_END,
 	}
 end
