@@ -14,9 +14,10 @@
 - Make `luamin` rename locals
 
 # For the OS
-- add a package manager
+- support hashed passwords
 - making the current coreutils match the POSIX/GNU versions
 - implementing more coreutils
 - Add support for unmanaged filesystems and partition tables
 - Add support for various networking stacks
 - add async I/O support to the networking drivers
+- add Lua 5.2 support
