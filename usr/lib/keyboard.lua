@@ -177,7 +177,7 @@ function keyboard.isPrintable(char)
 end
 
 function keyboard.isTerminalPrintable(char)
-    return keyboard.isPrintable(char) or (char >= 3 and char <= 24) or (char == 127)
+    return (char >= 3 and char <= 20) or (char >= 32)
 end
 
 return keyboard

@@ -30,6 +30,11 @@ function blake3.mk32bit(x)
 end
 
 ---@param x integer
+function blake3.mk64bit(x)
+	return math.floor(x) & 0xFFFFFFFFFFFFFFFF
+end
+
+---@param x integer
 ---@param n integer
 function blake3.rotateRight(x, n)
 	return blake3.mk32bit((x >> n) | (x << (32 - n)))
@@ -44,14 +49,14 @@ end
 ---@param mx integer
 ---@param my integer
 function blake3.g(buf, a, b, c, d, mx, my)
-	buf[a] = blake3.mk32bit(buf[a] + buf[b] + mx)
+	buf[a] = blake3.mk64bit(buf[a] + buf[b] + mx)
 	buf[d] = blake3.rotateRight(buf[d] ~ buf[a], 16)
-	buf[c] = blake3.mk32bit(buf[c] + buf[d])
+	buf[c] = blake3.mk64bit(buf[c] + buf[d])
 	buf[b] = blake3.rotateRight(buf[b] ~ buf[c], 12)
 
-	buf[a] = blake3.mk32bit(buf[a] + buf[b] + my)
+	buf[a] = blake3.mk64bit(buf[a] + buf[b] + my)
 	buf[d] = blake3.rotateRight(buf[d] ~ buf[a], 8)
-	buf[c] = blake3.mk32bit(buf[c] + buf[d])
+	buf[c] = blake3.mk64bit(buf[c] + buf[d])
 	buf[b] = blake3.rotateRight(buf[b] ~ buf[c], 7)
 end
 

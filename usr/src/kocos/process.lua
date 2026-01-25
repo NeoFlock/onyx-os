@@ -2,6 +2,8 @@ local process = {}
 
 process.npid = 0
 
+process.execDeadline = math.huge
+
 -- File descriptors / resources with special meanings
 --- The standard input stream
 process.STDIN = 0
@@ -56,7 +58,7 @@ process.STDTERM = 3
 ---@field daemon? string
 ---@field ev_listener? function
 ---@field reEnterAs? Kocos.process
----@field executionDeadline? number
+---@field desiredExecTime? number
 ---@field proclocal table
 
 ---@type table<integer, Kocos.process>
@@ -147,6 +149,7 @@ function process.fork(proc, func)
 	forked.tracer = proc.tracer
 	forked.parent = proc
 	forked.exe = proc.exe
+	forked.desiredExecTime = proc.desiredExecTime
 	proc.children[forked.pid] = forked
 	return forked
 end
@@ -161,6 +164,7 @@ function process.isDecendantOf(proc, parent)
 	return false
 end
 
+-- posix-y signals
 process.SIGABRT = "SIGABRT" -- process closed
 process.SIGALRM = "SIGALRM" -- alarm
 process.SIGTERM = "SIGTERM" -- terminate
@@ -182,6 +186,17 @@ process.SIGSYSC = "SIGSYSC" -- when tracing, traced process did a system call
 process.SIGSYSR = "SIGSYSR" -- when tracing, traced process did a system return
 process.SIGPWR = "SIGPWR" -- shutdown or reboot
 
+-- and these non-POSIX ones used by displayd
+process.SIGWINTOUCH = "SIGWINTOUCH" -- window touched
+process.SIGWINDRAG = "SIGWINDRAG" -- window touched
+process.SIGWINDROP = "SIGWINDROP" -- window touched
+process.SIGWINSCROLL = "SIGWINSCROLL" -- window touched
+process.SIGKEYUP = "SIGKEYUP" -- key released
+process.SIGKEYDOWN = "SIGKEYDOWN" -- key pressed
+process.SIGKEYPASTE = "SIGKEYPASTE" -- clipboard
+process.SIGSCRADD = "SIGSCRADD" -- screen added
+process.SIGSCRREM = "SIGSCRREM" -- screen removed
+
 ---@param proc Kocos.process
 ---@param signal string
 function process.raise(proc, signal, ...)
@@ -199,10 +214,12 @@ function process.raise(proc, signal, ...)
 		proc.stopped = false
 		return
 	end
-	if proc.stopped then return end -- nope
 	if proc.signals[signal] then
 		-- Handler!!!!!!!
-		process.pcall(proc, proc.signals[signal], ...)
+		local ok, err = process.pcall(proc, proc.signals[signal], ...)
+		if not ok then
+			Kocos.printkf(Kocos.L_WARN, "pid %d: error in handler for signal %s: %s", proc.pid, signal, err)
+		end
 		-- no return to allow unmodifiable behavior
 	else
 		-- Default handlers
@@ -499,6 +516,11 @@ function process.blockUntil(proc, condition)
 end
 
 ---@param proc Kocos.process
+function process.allowedTime(proc)
+	return proc.desiredExecTime or 0.2
+end
+
+---@param proc Kocos.process
 function process.resume(proc)
 	if proc.stopped then return end
 	if process.isBlocked(proc) then return end
@@ -506,11 +528,13 @@ function process.resume(proc)
 	if coroutine.status(proc.thread) ~= "suspended" then return end
 	local old = process.current
 	process.current = proc.reEnterAs or proc
-	proc.executionDeadline = computer.uptime() + 0.2
+	local oldExec = process.execDeadline
+	--process.execDeadline = computer.uptime() + process.allowedTime(proc)
 	local ok, err = coroutine.resume(proc.thread)
 	-- TODO: compute how "nice" the value is
 	proc.reEnterAs = process.current
 	if proc.reEnterAs == proc then proc.reEnterAs = nil end
+	process.execDeadline = oldExec
 	process.current = old
 	if not ok then
 		Kocos.printkf(Kocos.L_ERROR, "Process %d crashed: %s", proc.pid, debug.traceback(proc.thread, err))

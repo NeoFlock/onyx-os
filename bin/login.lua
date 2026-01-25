@@ -1,58 +1,159 @@
 --!lua
 
--- Log users in
+-- Setup log-in prompts or terminals
 
-local userdb = require("userdb")
-local readline = require("readline")
-local shutils = require("shutils")
+local vtty = require("vtty")
 
-local users = assert(userdb.parsePasswd())
+assert(k.invokeDaemon("displayd", "mksignaler"))
 
----@param name string
----@return userdb.user?
-local function getugids(name)
-	for _, user in ipairs(users) do
-		if user.name == name then
-			return user
+-- TODO: check for greeter program
+
+if k.fcntl(0, "F_GETFL") then
+	assert(k.exec("/bin/prompt.lua"))
+	return 0
+end
+
+k.setexectime(4)
+
+---@type table<string, vtty>
+local screenTerms = {}
+
+---@type vtty?
+local mainTTY
+
+---@param fmt string
+local function writef(fmt, ...)
+	if not mainTTY then return end
+	mainTTY:write(string.format(fmt, ...))
+end
+
+---@param screen string
+local function setupScreen(screen)
+	if screenTerms[screen] then return end
+	---@type vtty.controller
+	local controller = {
+		maxResolution = function()
+			return k.invokeDaemon("displayd", "maxResolution", screen)
+		end,
+		getResolution = function()
+			return k.invokeDaemon("displayd", "getResolution", screen)
+		end,
+		setResolution = function(w, h)
+			return k.invokeDaemon("displayd", "setResolution", screen, w, h)
+		end,
+		fill = function(x, y, w, h, c)
+			return k.invokeDaemon("displayd", "fill", screen, x, y, w, h, c)
+		end,
+		copy = function(x, y, w, h, tx, ty)
+			return k.invokeDaemon("displayd", "copy", screen, x, y, w, h, tx, ty)
+		end,
+		setForeground = function(c)
+			return k.invokeDaemon("displayd", "setForeground", screen, c)
+		end,
+		setBackground = function(c)
+			return k.invokeDaemon("displayd", "setBackground", screen, c)
+		end,
+		getForeground = function()
+			return k.invokeDaemon("displayd", "getForeground", screen)
+		end,
+		getBackground = function()
+			return k.invokeDaemon("displayd", "getBackground", screen)
+		end,
+		set = function(x, y, s)
+			return k.invokeDaemon("displayd", "set", screen, x, y, s)
+		end,
+		get = function(x, y)
+			return k.invokeDaemon("displayd", "get", screen, x, y)
+		end,
+		freeMemory = function()
+			return k.invokeDaemon("displayd", "freeMemory")
+		end,
+		totalMemory = function()
+			return k.invokeDaemon("displayd", "totalMemory")
+		end,
+	}
+
+	local w, h = controller.maxResolution()
+
+	local term = vtty.create(controller, w, h, "login-term")
+	screenTerms[screen] = term
+	term:initController()
+	term.hw[1] = screen
+
+	mainTTY = mainTTY or term
+
+	term:write(_OSVERSION .. "!\n")
+
+	local c, err = k.fork(function()
+		for i=0,3 do k.close(i) end
+		local stdout = k.openstream {
+			flags = 0,
+			write = function(_, data) term:write(data) return true end,
+			read = function(_, len) return term:read(len) end,
+			ioctl = function(_, action, ...) return term:ioctl(action, ...) end,
+		}
+		assert(stdout == 0)
+		k.dup2(stdout, 1)
+		k.dup2(stdout, 2)
+		k.dup2(stdout, 3)
+		assert(k.exec("/bin/prompt.lua"))
+	end)
+
+	if c then
+		term:write("Pid: " .. c .. "\n")
+	else
+		term:write("Error: " .. err .. "\n")
+	end
+end
+
+---@return string[]
+local function getScreens()
+	return k.invokeDaemon("displayd", "getScreens")
+end
+
+k.signal("SIGSCRADD", setupScreen)
+
+k.signal("SIGKEYDOWN", function(kb, char, code)
+	for _, screen in ipairs(getScreens()) do
+		local keyboards = k.invokeDaemon("displayd", "getKeyboards", screen) or {}
+		if table.contains(keyboards, kb) then
+			local term = screenTerms[screen]
+			if term then
+				term:putEvent("key_down", kb, char, code)
+			end
+			return
 		end
 	end
-end
+end)
 
----@param name string
----@return boolean
-local function tryLogin(name)
-	if not userdb.checkpass(name, "", users) then
-		k.write(1, "password: ")
-		local pass = readline(nil, nil, "")
-		if not pass then return false end
-		if not userdb.checkpass(name, pass:sub(1, -2), users) then return false end
+k.signal("SIGKEYUP", function(kb, char, code)
+	for _, screen in ipairs(getScreens()) do
+		local keyboards = k.invokeDaemon("displayd", "getKeyboards", screen) or {}
+		if table.contains(keyboards, kb) then
+			local term = screenTerms[screen]
+			if term then
+				term:putEvent("key_up", kb, char, code)
+			end
+			return
+		end
 	end
-	local uinfo = getugids(name)
-	if not uinfo then return false end
-	local pid = assert(k.fork(function()
-		assert(k.setuid(uinfo.uid))
-		assert(k.setgid(uinfo.gid))
-		assert(k.seteuid(uinfo.uid))
-		assert(k.setegid(uinfo.gid))
-		assert(k.chdir(uinfo.home))
-		local environ = table.copy(assert(k.environ()))
-		environ.USER = uinfo.name
-		environ.SHELL = uinfo.shell
-		environ.PATH = shutils.defaultSearchPath(uinfo.name)
-		environ.HOME = uinfo.home
-		environ.USERINFO = uinfo.userInfo
-		assert(k.exec(uinfo.shell, nil, environ))
-	end))
-	assert(k.waitpid(pid))
-	return true
-end
+end)
 
-while true do
-	k.write(1, "login: ")
-	local name = readline()
-	if not name then return end
-	if not tryLogin(name:sub(1, -2)) then
-		print("login failed")
-		k.sleep(math.random() * 2.5 + 0.5)
+k.signal("SIGKEYPASTE", function(kb, code)
+	for _, screen in ipairs(getScreens()) do
+		local keyboards = k.invokeDaemon("displayd", "getKeyboards", screen) or {}
+		if table.contains(keyboards, kb) then
+			local term = screenTerms[screen]
+			if term then
+				term:putEvent("clipboard", kb, code)
+			end
+			return
+		end
 	end
-end
+end)
+
+local screens = getScreens()
+for _, screen in ipairs(screens) do setupScreen(screen) end
+
+k.kill(k.getpid(), "SIGSTOP")
+coroutine.yield()

@@ -1,0 +1,6 @@
+name=displayd
+type=spawn
+groups=display
+needs=@setup,@initfs
+exec=/bin/displayd.lua
+addr=user

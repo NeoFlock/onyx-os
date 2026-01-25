@@ -37,6 +37,7 @@ end
 local gpu, screen = component.list("gpu")(), component.list("screen")()
 
 if gpu and screen then
+	-- also re-implemented in vtty.lua
 	component.invoke(gpu, "bind", screen)
 
 	local x, y = 1, 1
@@ -416,6 +417,7 @@ if gpu and screen then
 			return
 		end
 		if action == "v" then
+			-- TODO: the rest of the VRAM buffers escapes
 			if nums[1] == 1 then
 				local free = component.invoke(gpu, "freeMemory") or 0
 				local total = component.invoke(gpu, "totalMemory") or 0

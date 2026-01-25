@@ -42,7 +42,6 @@ local function tick()
 		Kocos.poweroff(Kocos.shutdown == "reboot")
 		return
 	end
-	Kocos.process.run()
 	local interval = Kocos.args.pollInterval or 0
 	local percent = computer.energy() / computer.maxEnergy()
 	if percent < 0.5 then
@@ -52,6 +51,7 @@ local function tick()
 		interval = Kocos.args.midBatteryPollInterval or 0.2 -- idle way longer to save battery
 	end
 	Kocos.event.pull(interval)
+	Kocos.process.run()
 end
 
 local initPaths = {

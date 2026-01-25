@@ -28,6 +28,19 @@ function syscalls.open(path, mode)
 	return process.moveResource(process.current, res)
 end
 
+---@param f Kocos.fs.FileDescriptor
+function syscalls.openstream(f)
+	if type(f) ~= "table" then
+		return nil, errno.EINVAL
+	end
+	local file = table.copy(f)
+	file.flags = math.floor(file.flags or 0)
+
+	---@type Kocos.resource
+	local res = {refc = 1, opts = 0, file = file}
+	return process.moveResource(process.current, res)
+end
+
 ---@param path string
 ---@param perms integer
 ---@return boolean?, string?
@@ -1050,7 +1063,7 @@ function syscalls.kill(pid, signal, ...)
 	if signal == "SIGABRT" then return nil, errno.EPERM end
 	local allowed = process.isRoot(cur) or cur.uid == target.uid or cur.euid == target.euid or cur.euid == target.uid
 	if not allowed then
-		return nil, errno.EPERM
+		return nil, errno.EACCESS
 	end
 	process.raise(target, signal, ...)
 	return true
@@ -1117,6 +1130,12 @@ function syscalls.resume(pid)
 	return true
 end
 
+---@param desiredTime? number
+function syscalls.setexectime(desiredTime)
+	process.current.desiredExecTime = desiredTime
+	return true
+end
+
 Kocos.syscalls = syscalls
 
 ---@diagnostic disable: lowercase-global
@@ -1125,11 +1144,7 @@ Kocos.syscalls = syscalls
 function syscall(sysname, ...)
 	local cur = process.current
 
-	if cur.executionDeadline and computer.uptime() > cur.executionDeadline then
-		coroutine.yield()
-	end
-
-	if process.isDead(cur.pid) then return nil, errno.ECHILD end
+	if process.isDead(cur.pid) then return nil, errno.ESRCH end
 	if not syscalls[sysname] then return nil, errno.ENOSYS end
 	if cur.tracer then
 		-- inform the tracer

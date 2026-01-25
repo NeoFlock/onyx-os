@@ -134,6 +134,10 @@
 				type = "regular",
 				path = "usr/lib/userdb.lua",
 			},
+			["/usr/lib/vtty.lua"] = {
+				type = "regular",
+				path = "usr/lib/vtty.lua",
+			},
 		},
 	},
 	coreutils = {
@@ -310,6 +314,14 @@
 			["/bin/mkramfsdev.lua"] = {
 				type = "regular",
 				path = "bin/mkramfsdev.lua",
+			},
+			["/bin/terminfo.lua"] = {
+				type = "regular",
+				path = "bin/terminfo.lua",
+			},
+			["/bin/ctype.lua"] = {
+				type = "regular",
+				path = "bin/ctype.lua",
 			},
 		},
 	},

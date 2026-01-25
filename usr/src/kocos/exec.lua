@@ -27,6 +27,7 @@ function Kocos._default_luaExec(ev, path, data, namespace)
 					Kocos.process.terminate(Kocos.process.current, 0)
 				end
 			else
+				Kocos.printkf(Kocos.L_WARN, "process %d died: %s", Kocos.process.current.pid, exitcode)
 				Kocos.process.raise(Kocos.process.current, "SIGTRAP", exitcode)
 			end
 		end,
