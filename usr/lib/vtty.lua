@@ -212,6 +212,16 @@ function vtty:doCSI(contents, action)
 			self.keybuf = self.keybuf .. string.format("\x1b[%d;%dR", self.x, self.y)
 			return
 		end
+		if contents == "7" then
+			local w, h = self.controller.getResolution()
+			self.keybuf = self.keybuf .. string.format("\x1b[%d;%dR", w, h)
+			return
+		end
+		if contents == "8" then
+			local w, h = self.controller.maxResolution()
+			self.keybuf = self.keybuf .. string.format("\x1b[%d;%dR", w, h)
+			return
+		end
 		return
 	end
 	if action == "h" then
@@ -277,6 +287,19 @@ function vtty:putc(c)
 				return
 			end
 			self.esc = self.esc .. c
+			return
+		end
+		if self.esc:sub(1,1) == "]" then
+			-- CSIs!!
+			self.esc = self.esc .. c
+			local terms = {"\a", "\x1b\\"}
+			for _, term in ipairs(terms) do
+				if self.esc:sub(-#term) == term then
+					self:doOSC(self.esc:sub(2, -#term - 1))
+					self.esc = nil
+					return
+				end
+			end
 			return
 		end
 		return

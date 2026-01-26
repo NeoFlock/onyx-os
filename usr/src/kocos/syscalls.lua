@@ -480,7 +480,7 @@ end
 ---@return integer Returns pid of new process
 function syscalls.fork(f)
 	local child = process.fork(process.current, f)
-	process.resume(child) -- give child a chance to shine
+	--process.resume(child) -- give child a chance to shine
 	return child.pid
 end
 

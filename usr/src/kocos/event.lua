@@ -10,6 +10,7 @@ Kocos.event.listeners = {}
 Kocos.event.timers = {}
 
 function Kocos.event.notifyListeners(...)
+	if select("#", ...) == 0 then return end
 	for _, func in ipairs(Kocos.event.listeners) do
 		local ok, err = xpcall(func, debug.traceback, ...)
 		if not ok then

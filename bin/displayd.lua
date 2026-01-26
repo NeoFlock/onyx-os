@@ -243,9 +243,16 @@ function displayd.bitblt(dst, col, row, w, h, src, fromCol, fromRow)
 	return utils.getGPU().bitblt(dst, col, row, w, h, src, fromCol, fromRow)
 end
 
+---@type table<string, string[]>
+local kbCache = {}
+
 ---@param screen string
 function displayd.getKeyboards(screen)
-	return k.cinvoke(screen, "getKeyboards")
+	if kbCache[screen] then return kbCache[screen] end
+	local l, err = k.cinvoke(screen, "getKeyboards")
+	if not l then return l, err end
+	kbCache[screen] = l
+	return l
 end
 
 ---@param screen string
@@ -285,9 +292,18 @@ end
 ---@param addr string
 ---@param type string
 function evs.component_removed(addr, type)
-	if type ~= "screen" then return end
-	screens[addr] = nil -- bye bye bye
-	utils.signal("SIGSCRREM", addr)
+	if type == "screen" then
+		kbCache[addr] = nil -- no point
+		screens[addr] = nil -- bye bye bye
+		utils.signal("SIGSCRREM", addr)
+	end
+	if type == "keyboard" then
+		for _, l in pairs(kbCache) do
+			for i=#l,1,-1 do
+				if l[i] == addr then table.remove(l, i) end
+			end
+		end
+	end
 end
 
 function evs.screen_resized(addr, w, h)
@@ -351,7 +367,9 @@ assert(k.registerDaemon("displayd", function(cpid, action, ...)
 end))
 
 assert(k.mklistener(function(ev, ...)
-	if evs[ev] then evs[ev](...) end
+	if evs[ev] then
+		evs[ev](...)
+	end
 end))
 
 for addr, type in k.clist() do
