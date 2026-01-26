@@ -22,12 +22,6 @@ process.STDTERM = 3
 ---@field modules table<string, Kocos.process.module>
 ---@field deps Kocos.process.sharedLib[]
 
----@class Kocos.resource
----@field refc integer
----@field opts integer
----@field file? Kocos.fs.FileDescriptor
----@field socket? Kocos.net.socket
-
 ---@alias Kocos.process.condition fun(): boolean
 
 ---@class Kocos.process
@@ -45,7 +39,7 @@ process.STDTERM = 3
 ---@field modules table<string, Kocos.process.module>
 ---@field deps Kocos.process.sharedLib[]
 ---@field driver? function
----@field fds table<integer, Kocos.resource>
+---@field fds table<integer, Kocos.Handle>
 ---@field signals table<string, function>
 ---@field children table<integer, Kocos.process>
 ---@field parent? Kocos.process
@@ -140,7 +134,7 @@ function process.fork(proc, func)
 	-- resources are retained
 	for fd, res in pairs(proc.fds) do
 		forked.fds[fd] = res
-		res.refc = res.refc + 1
+		res.rc = res.rc + 1
 	end
 	forked.stopped = proc.stopped
 	forked.cwd = proc.cwd
@@ -280,21 +274,8 @@ function process.pcall(proc, f, ...)
 	return process.xpcall(proc, f, tostring, ...)
 end
 
----@param res Kocos.resource
-function process.closeResource(res)
-	res.refc = res.refc - 1
-	if res.refc > 0 then return end
-
-	if res.file then
-		Kocos.fs.close(res.file)
-	end
-	if res.socket then
-		Kocos.net.close(res.socket)
-	end
-end
-
 ---@param proc Kocos.process
----@param res Kocos.resource
+---@param res Kocos.Handle
 function process.moveResource(proc, res)
 	local fd = 0
 	while proc.fds[fd] do fd = fd + 1 end
@@ -337,7 +318,7 @@ function process.terminate(proc, exit)
 	end
 
 	for _, res in pairs(proc.fds) do
-		process.closeResource(res)
+		Kocos.handles.close(res)
 	end
 	proc.fds={}
 
@@ -454,13 +435,13 @@ function process.exec(proc, path, argv, env, namespace)
 			local toClose = {}
 			for fd, res in pairs(proc.fds) do
 				-- TODO: check cloexec
-				if (res.opts & Kocos.fs.O_CLOEXEC) ~= 0 then
+				if (res.flags & Kocos.fs.O_CLOEXEC) ~= 0 then
 					table.insert(toClose, fd)
 				end
 			end
 			for _, fd in ipairs(toClose) do
 				local res = proc.fds[fd]
-				process.closeResource(res)
+				Kocos.handles.close(res)
 				proc.fds[fd] = nil
 			end
 			return true
@@ -529,7 +510,7 @@ function process.resume(proc)
 	local old = process.current
 	process.current = proc.reEnterAs or proc
 	local oldExec = process.execDeadline
-	--process.execDeadline = computer.uptime() + process.allowedTime(proc)
+	process.execDeadline = computer.uptime() + process.allowedTime(proc)
 	local ok, err = coroutine.resume(proc.thread)
 	-- TODO: compute how "nice" the value is
 	proc.reEnterAs = process.current

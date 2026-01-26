@@ -3,6 +3,7 @@
 -- Setup log-in prompts or terminals
 
 local vtty = require("vtty")
+local errnos = require("errnos")
 
 assert(k.invokeDaemon("displayd", "mksignaler"))
 
@@ -77,9 +78,22 @@ local function setupScreen(screen)
 		for i=0,3 do k.close(i) end
 		local stdout = k.openstream {
 			flags = 0,
-			write = function(_, data) term:write(data) return true end,
-			read = function(_, len) return term:read(len) end,
-			ioctl = function(_, action, ...) return term:ioctl(action, ...) end,
+			rc = 1,
+			state = "",
+			type = "device",
+			handle = function(req, ...)
+				if req == "write" then
+					term:write((...))
+					return true
+				end
+				if req == "read" then
+					return term:read((...))
+				end
+				if req == "ioctl" then
+					return term:ioctl(...)
+				end
+				return nil, errnos.EBADF
+			end,
 		}
 		assert(stdout == 0)
 		k.dup2(stdout, 1)

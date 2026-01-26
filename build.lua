@@ -58,6 +58,7 @@ local buildInfo = {
 			"usr/src/kocos/require.lua",
 			"usr/src/kocos/exec.lua",
 			"usr/src/kocos/net.lua",
+			"usr/src/kocos/handles.lua",
 			"usr/src/kocos/syscalls.lua",
 			"usr/src/kocos/boot.lua",
 		},

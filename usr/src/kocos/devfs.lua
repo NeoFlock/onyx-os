@@ -53,42 +53,34 @@ end
 
 ---@param dev string
 ---@param mode "r"|"a"|"w"
----@return Kocos.fs.FileDescriptor?, string?
+---@return Kocos.Handle?, string?
 local function devfsDevToFD(dev, mode)
 	local t = component.type(dev)
 	if t == "tunnel" then
 		local s, err = Kocos.net.socket("AF_TUNNEL", "dgram")
 		if not s then return nil, err end
-		local ok, err2 = Kocos.net.connect(s, {address = dev, port = 0})
+		local ok, err2 = Kocos.handles.connect(s, {address = dev, port = 0})
 		if not ok then return nil, err2 end
 		s.flags = 1
-		---@type Kocos.fs.FileDescriptor
-		return {
-			flags = 1,
-			write = function(_, data)
-				if mode == "r" then return false, Kocos.errno.EBADF end
-				return Kocos.net.write(s, data)
-			end,
-			read = function(_, len)
-				if mode ~= "r" then return nil, Kocos.errno.EBADF end
-				return Kocos.net.read(s, len)
-			end,
-			close = function()
-				Kocos.net.close(s)
-			end,
-		}
+		return s
 	end
 	if t == "serial" then
-		---@type Kocos.fs.FileDescriptor
+		---@type Kocos.Handle
 		return {
 			flags = 1,
-			write = function(_, data)
-				if mode == "r" then return false, Kocos.errno.EBADF end
-				return component.invoke(dev, "write", data)
-			end,
-			read = function(_, len)
-				if mode ~= "r" then return nil, Kocos.errno.EBADF end
-				return component.invoke(dev, "read", len)
+			type = "device",
+			state = "",
+			rc = 1,
+			handle = function(act, v)
+				if act == "write" then
+					if mode == "r" then return false, Kocos.errno.EBADF end
+					return component.invoke(dev, "write", v)
+				end
+				if act == "read" then
+					if mode ~= "r" then return false, Kocos.errno.EBADF end
+					return component.invoke(dev, "read", v)
+				end
+				return nil, Kocos.errno.EBADF
 			end,
 		}
 	end
@@ -100,91 +92,105 @@ local function devfsDevToFD(dev, mode)
 		---@cast d Kocos.fs.partition
 		local cursor = 0
 
-		---@type Kocos.fs.FileDescriptor
+		---@type Kocos.Handle
 		return {
+			type = "device",
+			state = "",
+			rc = 1,
 			flags = 1,
-			read = function(_, len)
-				if mode ~= "r" then return nil, Kocos.errno.EBADF end
-				local cap = d.getCapacity()
-				if cursor >= cap then return end
-				len = math.min(len, cap - cursor, 4*1024)
-				local sectorSize = d.getSectorSize()
-				local parts = {}
-				local left = len
-				while left > 0 do
-					local off = cursor % sectorSize
-					local sector = assert(d.readSector(1 + math.floor(cursor / sectorSize)))
-					-- sub is expensive
-					sector = sector:sub(1+off, len+off)
-					table.insert(parts, sector)
-					left = left - #sector
-					cursor = cursor + #sector
-				end
-				cursor = math.clamp(cursor, 0, cap)
-				return table.concat(parts)
-			end,
-			write = function(_, data)
-				if mode == "r" then return false, Kocos.errno.EBADF end
-				local cap = d.getCapacity()
-				local sectorSize = d.getSectorSize()
-				local left = math.min(#data, cap - cursor)
-				while left > 0 do
-					local written = 0
-					if cursor % sectorSize == 0 and left >= sectorSize then
-						-- best case scenario possible
-						local sec = data:sub(1, sectorSize)
-						d.writeSector(1 + cursor / sectorSize, sec)
-						written = sectorSize
-					else
-						-- horrible scenario to be in
+			handle = function(act, v, ...)
+				if act == "read" then
+					---@type integer
+					local len = v
+					if mode ~= "r" then return nil, Kocos.errno.EBADF end
+					local cap = d.getCapacity()
+					if cursor >= cap then return end
+					len = math.min(len, cap - cursor, 4*1024)
+					local sectorSize = d.getSectorSize()
+					local parts = {}
+					local left = len
+					while left > 0 do
 						local off = cursor % sectorSize
-						local len = math.min(left, sectorSize)
-						local secId = 1 + math.floor(cursor / sectorSize)
-						local sec = assert(d.readSector(secId))
-						sec = sec:sub(1, off) .. data:sub(1, len) .. sec:sub(1+off+len)
-						d.writeSector(secId, sec)
-						written = len
+						local sector = assert(d.readSector(1 + math.floor(cursor / sectorSize)))
+						-- sub is expensive
+						sector = sector:sub(1+off, len+off)
+						table.insert(parts, sector)
+						left = left - #sector
+						cursor = cursor + #sector
 					end
-					data = data:sub(1 + written)
-					cursor = cursor + written
-					left = left - written
+					cursor = math.clamp(cursor, 0, cap)
+					return table.concat(parts)
 				end
-				cursor = math.clamp(cursor, 0, cap)
-				return true
-			end,
-			seek = function(_, whence, off)
-				local cap = d.getCapacity()
-				if whence == "set" then
-					cursor = off
-				elseif whence == "cur" then
-					cursor = cursor + off
-				elseif whence == "end" then
-					cursor = cap - off
+				if act == "write" then
+					if mode == "r" then return false, Kocos.errno.EBADF end
+					local cap = d.getCapacity()
+					local sectorSize = d.getSectorSize()
+					local left = math.min(#data, cap - cursor)
+					while left > 0 do
+						local written = 0
+						if cursor % sectorSize == 0 and left >= sectorSize then
+							-- best case scenario possible
+							local sec = data:sub(1, sectorSize)
+							d.writeSector(1 + cursor / sectorSize, sec)
+							written = sectorSize
+						else
+							-- horrible scenario to be in
+							local off = cursor % sectorSize
+							local len = math.min(left, sectorSize)
+							local secId = 1 + math.floor(cursor / sectorSize)
+							local sec = assert(d.readSector(secId))
+							sec = sec:sub(1, off) .. data:sub(1, len) .. sec:sub(1+off+len)
+							d.writeSector(secId, sec)
+							written = len
+						end
+						data = data:sub(1 + written)
+						cursor = cursor + written
+						left = left - written
+					end
+					cursor = math.clamp(cursor, 0, cap)
+					return true
 				end
-				cursor = math.clamp(cursor, 0, cap)
-				return cursor
-			end,
-			ioctl = function(_, action, ...)
-				if action == "devfs:address" then
-					return dev
+				if act == "seek" then
+					local whence, off = v, ...
+					local cap = d.getCapacity()
+					if whence == "set" then
+						cursor = off
+					elseif whence == "cur" then
+						cursor = cursor + off
+					elseif whence == "end" then
+						cursor = cap - off
+					end
+					cursor = math.clamp(cursor, 0, cap)
+					return cursor
 				end
-				if action == "devfs:slot" then
-					return component.slot(dev)
+				if act == "ioctl" then
+					local action = v
+					if action == "devfs:address" then
+						return dev
+					end
+					if action == "devfs:slot" then
+						return component.slot(dev)
+					end
+					if action == "devfs:type" then
+						return component.type(dev)
+					end
+					if action == "devfs:doc" then
+						return component.doc(dev, ...)
+					end
+					return component.invoke(dev, action, ...)
 				end
-				if action == "devfs:type" then
-					return component.type(dev)
-				end
-				if action == "devfs:doc" then
-					return component.doc(dev, ...)
-				end
-				return component.invoke(dev, action, ...)
+				return nil, Kocos.errno.EBADF
 			end,
 		}
 	end
-	---@type Kocos.fs.FileDescriptor
+	---@type Kocos.Handle
 	return {
+		type = "device",
+		state = "",
+		rc = 1,
 		flags = 0,
-		ioctl = function(_, method, ...)
+		handle = function(act, method, ...)
+			if act == "ioctl" then
 				if method == "devfs:address" then
 					return dev
 				end
@@ -197,88 +203,100 @@ local function devfsDevToFD(dev, mode)
 				if method == "devfs:doc" then
 					return component.doc(dev, ...)
 				end
-			return component.invoke(dev, method, ...)
+				return component.invoke(dev, method, ...)
+			end
+			return nil, Kocos.errno.EBADF
 		end,
 	}
 end
 
 ---@param path string
 ---@param mode "r"|"w"|"a"
----@return Kocos.fs.FileDescriptor?, string?
+---@return Kocos.Handle?, string?
 local function devfsMakeFD(path, mode)
 	local errno = Kocos.errno
 	if path == "null" then
-		---@type Kocos.fs.FileDescriptor
+		---@type Kocos.Handle
 		return {
-			write = function() return true end,
-			read = function() end,
+			type = "device",
+			state = "",
+			handle = function(act)
+				if act == "read" then return end
+				if act == "write" then return true end
+				return nil, Kocos.errno.EBADF
+			end,
+			rc = 1,
 			flags = 0,
 		}
 	end
 	if path == "zero" then
 		if mode ~= "r" then return nil, errno.EPERM end
-		---@type Kocos.fs.FileDescriptor
+		---@type Kocos.Handle
 		return {
-			read = function(_, len)
-				if len == math.huge then len = 4096 end
-				return string.rep("\0", len)
+			type = "device",
+			state = "",
+			handle = function(act, len)
+				if act == "read" then
+					if len == math.huge then len = 4096 end
+					return string.rep("\0", len)
+				end
+				return nil, Kocos.errno.EBADF
 			end,
+			rc = 1,
 			flags = 0,
 		}
 	end
 	if path == "random" then
 		if mode ~= "r" then return nil, errno.EPERM end
-		---@type Kocos.fs.FileDescriptor
+		---@type Kocos.Handle
 		return {
-			read = function(_, len)
-				if len == math.huge then len = 4096 end
-				local c = ""
-				for _=1,len do
-					c = c .. string.char(math.random(0, 255))
+			type = "device",
+			state = "",
+			handle = function(act, len)
+				if act == "read" then
+					if len == math.huge then len = 4096 end
+					local c = ""
+					for _=1,len do
+						c = c .. string.char(math.random(0, 255))
+					end
+					return c
 				end
-				return c
+				return nil, Kocos.errno.EBADF
 			end,
+			rc = 1,
 			flags = 0,
 		}
 	end
 	if path == "hex" then
 		if mode ~= "r" then return nil, errno.EPERM end
-		---@type Kocos.fs.FileDescriptor
+		---@type Kocos.Handle
 		return {
-			read = function(_, len)
-				if len == math.huge then len = 4096 end
-				local c = ""
-				local a = "0123456789ABCDEF"
-				for _=1,len do
-					local i = math.random(1, 16)
-					c = c .. a:sub(i, i)
+			type = "device",
+			state = "",
+			handle = function(act, len)
+				if act == "read" then
+					if len == math.huge then len = 4096 end
+					local c = ""
+					local a = "0123456789ABCDEF"
+					for _=1,len do
+						local i = math.random(1, 16)
+						c = c .. a:sub(i, i)
+					end
+					return c
 				end
-				return c
+				return nil, Kocos.errno.EBADF
 			end,
+			rc = 1,
 			flags = 0,
 		}
 	end
 	if path:sub(1,3) == "std" then
 		local fd = Kocos.process["STD" .. path:sub(4):upper()]
 		if not fd then return nil, errno.ENOENT end
-		---@type Kocos.fs.FileDescriptor
-		return {
-			write = function(_, data)
-				return syscall("write", fd, data)
-			end,
-			read = function(_, len)
-				return syscall("read", fd, len)
-			end,
-			ioctl = function(_, action, ...)
-				return syscall("ioctl", action, ...)
-			end,
-			seek = function(_, whence, off)
-				return syscall("seek", whence, off)
-			end,
-			-- no finalizer cuz no
-			-- flags are not shared. TODO: consider setting fd flags on use
-			flags = 0,
-		}
+		local cur = Kocos.process.current
+		local res = cur.fds[fd]
+		if not res then return nil, errno.EBADF end
+		return res
 	end
 	local dev = devfsPathToDev(path)
 	if dev then
@@ -390,6 +408,7 @@ function Kocos._default_devfs(req, ...)
 				size = size,
 				createdAt = 0,
 				lastModified = 0,
+				diskSize = 0,
 				diskUsed = used,
 				diskTotal = size,
 				inode = math.random(0, 2^32-1),
@@ -403,6 +422,7 @@ function Kocos._default_devfs(req, ...)
 			size = 0,
 			createdAt = 0,
 			lastModified = 0,
+			diskSize = 0,
 			diskUsed = 0,
 			diskTotal = 0,
 			inode = math.random(0, 2^32-1),

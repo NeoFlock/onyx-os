@@ -53,19 +53,6 @@ fs.EV_DATAREADY = "data-ready"
 -- The string ID is conventionally obtained as the error of the successful write.
 fs.EV_WRITEDONE = "write-done"
 
----@class Kocos.fs.FileDescriptor
----@field write? fun(self, data: string): boolean, string?
----@field read? fun(self, amount: integer): string?, string?
----@field seek? fun(self, whence: seekwhence, off: integer): integer?, string?
----@field close? fun(self)
----@field ioctl? fun(self, action: string, ...): ...
----@field flags integer
---- This field should be invoked by the code managing this file descriptor
---- To notify whoever is listening on file system events
---- This is often used for asynchronous I/O, and allows for realtime responses
---- The listener is ONLY automatically informed of *close* events, and thus, **DO NOT MANUALLY NOTIFY OF CLOSE EVENTS**.
----@field listener? function
-
 ---@param drive Kocos.device
 ---@return Kocos.fs.vdrive?
 function fs.getVirtualDrive(drive)
@@ -285,7 +272,7 @@ end
 
 ---@param path string
 ---@param mode "r"|"w"|"a"
----@return Kocos.fs.FileDescriptor?, string?
+---@return Kocos.Handle?, string?
 function fs.open(path, mode)
 	if not fs.exists(path) then
 		return nil, Kocos.errno.ENOENT
@@ -304,81 +291,33 @@ function fs.open(path, mode)
 	return mnt.driver("FS-openFile", mnt.driverData, p, mode)
 end
 
----@param fd Kocos.fs.FileDescriptor
-function fs.close(fd)
-	if fd.listener then fd.listener(fs.EV_CLOSED) end
-	if fd.close then fd:close() end
-end
-
----@param fd Kocos.fs.FileDescriptor
----@param data string
----@return boolean, string?
-function fs.write(fd, data)
-	if fd.write then
-		return fd:write(data)
-	end
-	return false, Kocos.errno.EBADF
-end
-
----@param fd Kocos.fs.FileDescriptor
----@param len integer
----@return string?, string?
-function fs.read(fd, len)
-	if fd.read then
-		return fd:read(len)
-	end
-	return nil, Kocos.errno.EBADF
-end
-
----@param fd Kocos.fs.FileDescriptor
----@param whence? seekwhence
----@param off? integer
----@return integer?, string?
-function fs.seek(fd, whence, off)
-	whence = whence or "set"
-	off = off or 0
-	if fd.seek then
-		return fd:seek(whence, off)
-	end
-	return nil, Kocos.errno.EBADF
-end
-
----@param fd Kocos.fs.FileDescriptor
----@param action string
----@return ...
-function fs.ioctl(fd, action, ...)
-	if fd.ioctl then
-		return fd:ioctl(action, ...)
-	end
-	return nil, Kocos.errno.EBADF
-end
-
----@param fd Kocos.fs.FileDescriptor
----@param listener function?
-function fs.setlistener(fd, listener)
-	fd.listener = listener
-end
-
----@param fd Kocos.fs.FileDescriptor
----@param ev string
-function fs.notify(fd, ev, ...)
-	if fd.listener then
-		fd.listener(ev, ...)
-	end
-end
-
----@param reader? fun(self, n: integer): string?, string?
----@param writer? fun(self, data: string): boolean, string?
+---@param reader? fun(n: integer): string?, string?
+---@param writer? fun(data: string): boolean, string?
 ---@param finalizer? function
----@param ioctl? fun(self, action: string, ...): ...
----@return Kocos.fs.FileDescriptor
+---@param ioctl? fun(action: string, ...): ...
+---@return Kocos.Handle
 function fs.fd_from_rwf(reader, writer, finalizer, ioctl)
-	---@type Kocos.fs.FileDescriptor
+	---@type Kocos.Handle
 	return {
-		read = reader,
-		write = writer,
-		close = finalizer,
-		ioctl = ioctl,
+		type = "file",
+		state = "",
+		rc = 1,
+		handle = function(ac, v, ...)
+			if ac == "close" and finalizer then
+				finalizer()
+				return true
+			end
+			if ac == "ioctl" and ioctl then
+				return ioctl(v, ...)
+			end
+			if ac == "read" and reader then
+				return reader(v)
+			end
+			if ac == "write" and writer then
+				return writer(v)
+			end
+			return nil, Kocos.errno.EINVAL
+		end,
 		flags = 0,
 	}
 end
@@ -533,19 +472,25 @@ function fs._defaultManagedFS(req, ...)
 		if dev.isDirectory(path) then return nil, Kocos.errno.EISDIR end
 		local fd, err = dev.open(path, mode)
 		if not fd then return nil, err end
-		---@type Kocos.fs.FileDescriptor
+		---@type Kocos.Handle
 		return {
-			write = function(_, data)
-				return dev.write(fd, data)
-			end,
-			read = function(_, len)
-				return dev.read(fd, len)
-			end,
-			seek = function(_, whence, off)
-				return dev.seek(fd, whence, off)
-			end,
-			close = function()
-				dev.close(fd)
+			type = "file",
+			state = "",
+			rc = 1,
+			handle = function(act, v, ...)
+				if act == "close" then
+					return dev.close(fd)
+				end
+				if act == "seek" then
+					return dev.seek(fd, v, (...))
+				end
+				if act == "write" then
+					return dev.write(fd, v)
+				end
+				if act == "read" then
+					return dev.read(fd, v)
+				end
+				return nil, Kocos.errno.EBADF
 			end,
 			flags = 0,
 		}

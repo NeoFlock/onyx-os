@@ -1,5 +1,6 @@
 local process = Kocos.process
 local errno = Kocos.errno
+local handles = Kocos.handles
 
 ---@class Kocos.syscalls
 local syscalls = {}
@@ -22,23 +23,27 @@ function syscalls.open(path, mode)
 	local file, err = Kocos.fs.open(path, mode)
 	if not file then return nil, err end
 
-	---@type Kocos.resource
-	local res = {refc = 1, opts = 0, file = file}
-
-	return process.moveResource(process.current, res)
+	return process.moveResource(process.current, file)
 end
 
----@param f Kocos.fs.FileDescriptor
+---@param f Kocos.Handle
 function syscalls.openstream(f)
 	if type(f) ~= "table" then
 		return nil, errno.EINVAL
 	end
 	local file = table.copy(f)
 	file.flags = math.floor(file.flags or 0)
+	local proc = process.current
+	local h = file.handle
+	file.handle = function(...)
+		local t = {process.pcall(proc, h, ...)}
+		if t[1] then
+			return table.unpack(t, 2)
+		end
+		return nil, t[2]
+	end
 
-	---@type Kocos.resource
-	local res = {refc = 1, opts = 0, file = file}
-	return process.moveResource(process.current, res)
+	return process.moveResource(process.current, file)
 end
 
 ---@param path string
@@ -160,16 +165,7 @@ function syscalls.read(fd, length)
 	local proc = process.current
 	local f = proc.fds[fd]
 	if f then
-		if f.file then
-			if f.file.read then
-				return f.file:read(length)
-			end
-			return nil, errno.EBADF
-		end
-		if f.socket then
-			return Kocos.net.read(f.socket, length)
-		end
-		-- TODO: other resource types
+		return handles.read(f, length)
 	end
 	return nil, errno.EBADF
 end
@@ -187,13 +183,7 @@ function syscalls.write(fd, data)
 	local proc = process.current
 	local f = proc.fds[fd]
 	if f then
-		if f.file then
-			return Kocos.fs.write(f.file, data)
-		end
-		if f.socket then
-			return Kocos.net.write(f.socket, data)
-		end
-		-- TODO: other resource types
+		return handles.write(f, data)
 	end
 	return nil, errno.EBADF
 end
@@ -208,7 +198,7 @@ function syscalls.close(fd)
 	local f = proc.fds[fd]
 	if not f then return nil, errno.EBADF end
 	proc.fds[fd] = nil
-	process.closeResource(f)
+	handles.close(f)
 	return true
 end
 
@@ -223,10 +213,7 @@ function syscalls.seek(fd, whence, off)
 	local proc = process.current
 	local f = proc.fds[fd]
 	if not f then return nil, errno.EBADF end
-	if f.file then
-		return Kocos.fs.seek(f.file, whence, off)
-	end
-	return nil, errno.EBADF
+	return handles.seek(f, whence, off)
 end
 
 ---@param fd integer
@@ -239,13 +226,7 @@ function syscalls.ioctl(fd, action, ...)
 	local proc = process.current
 	local f = proc.fds[fd]
 	if not f then return nil, errno.EBADF end
-	if f.file then
-		return Kocos.fs.ioctl(f.file, action, ...)
-	end
-	if f.socket then
-		return Kocos.net.ioctl(f.socket, action, ...)
-	end
-	return nil, errno.EBADF
+	return handles.ioctl(f, action, ...)
 end
 
 ---@param domain string
@@ -287,28 +268,19 @@ function syscalls.socket(domain, socktype, protocol)
 	local sock, err = Kocos.net.socket(domain, socktype, protocol)
 	if not sock then return nil, err end
 
-	return Kocos.process.moveResource(Kocos.process.current, {
-		refc = 1,
-		opts = 0,
-		socket = sock,
-	})
+	return Kocos.process.moveResource(Kocos.process.current, sock)
 end
 
 ---@param fd integer
 function syscalls.accept(fd)
 	local res = process.current.fds[fd]
 	if not res then return nil, errno.EBADF end
-	local s = res.socket
-	if not s then return nil, errno.ENOTSOCK end
+	if res.type ~= "socket" and res.type ~= "device" then return nil, errno.ENOTSOCK end
 
-	local client, err = Kocos.net.accept(s)
+	local client, err = handles.accept(res)
 	if not client then return nil, err end
 
-	return Kocos.process.moveResource(Kocos.process.current, {
-		refc = 1,
-		opts = 0,
-		socket = client,
-	})
+	return Kocos.process.moveResource(Kocos.process.current, client)
 end
 
 ---@param fd integer
@@ -319,10 +291,9 @@ function syscalls.connect(fd, addrinfo)
 
 	local res = process.current.fds[fd]
 	if not res then return nil, errno.EBADF end
-	local s = res.socket
-	if not s then return nil, errno.ENOTSOCK end
+	if res.type ~= "socket" and res.type ~= "device" then return nil, errno.ENOTSOCK end
 
-	return Kocos.net.connect(s, addrinfo)
+	return handles.connect(res, addrinfo)
 end
 
 ---@param fd integer
@@ -333,10 +304,9 @@ function syscalls.listen(fd, addrinfo)
 
 	local res = process.current.fds[fd]
 	if not res then return nil, errno.EBADF end
-	local s = res.socket
-	if not s then return nil, errno.ENOTSOCK end
+	if res.type ~= "socket" and res.type ~= "device" then return nil, errno.ENOTSOCK end
 
-	return Kocos.net.listen(s, addrinfo)
+	return handles.listen(res, addrinfo)
 end
 
 ---@return integer?, string?
@@ -344,7 +314,7 @@ function syscalls.dup(fd)
 	local res = process.current.fds[fd]
 	if not res then return nil, errno.EBADF end
 	local f = process.moveResource(process.current, res)
-	res.refc = res.refc + 1
+	res.rc = res.rc + 1
 	return f
 end
 
@@ -354,7 +324,7 @@ function syscalls.dup2(fd, newFd)
 	if not res then return false, errno.EBADF end
 	if process.current.fds[newFd] then return false, errno.EEXIST end
 	process.current.fds[newFd] = res
-	res.refc = res.refc + 1
+	res.rc = res.rc + 1
 	return true
 end
 
@@ -371,13 +341,11 @@ function syscalls.fcntl(fd, action, ...)
 		if type(listener) ~= "function" and type(listener) ~= "nil" then
 			return nil, errno.EINVAL
 		end
-		if f.file then
-			return Kocos.fs.setlistener(f.file, listener)
-		end
-		return nil, errno.EBADF
+		f.listener = listener
+		return true
 	end
 	if action == Kocos.fs.F_GETFL then
-		return f.opts
+		return f.flags
 	end
 	if action == Kocos.fs.F_SETFL then
 		---@type integer
@@ -386,13 +354,7 @@ function syscalls.fcntl(fd, action, ...)
 			return nil, errno.EINVAL
 		end
 		flags = math.abs(math.floor(flags))
-		f.opts = flags
-		if f.file then
-			f.file.flags = flags
-		end
-		if f.socket then
-			f.socket.flags = flags
-		end
+		f.flags = flags
 		return true
 	end
 	if action == Kocos.fs.F_NOTIF then
@@ -401,15 +363,8 @@ function syscalls.fcntl(fd, action, ...)
 		if type(ev) ~= "string" then
 			return nil, errno.EINVAL
 		end
-		if f.file then
-			Kocos.fs.notify(f.file, ...)
-			return true
-		end
-		if f.socket then
-			Kocos.net.notify(f.socket, ...)
-			return true
-		end
-		return nil, errno.EBADF
+		handles.notify(f, ...)
+		return true
 	end
 	return nil, errno.EINVAL
 end
@@ -458,7 +413,7 @@ end
 ---@param path string
 ---@return string
 function syscalls.parentPath(path)
-	return Kocos.fs.parentPath(path)
+	return (Kocos.fs.parentPath(path))
 end
 
 ---@param s string
@@ -1143,6 +1098,10 @@ Kocos.syscalls = syscalls
 ---@return ...
 function syscall(sysname, ...)
 	local cur = process.current
+
+	if computer.uptime() >= process.execDeadline then
+		coroutine.yield()
+	end
 
 	if process.isDead(cur.pid) then return nil, errno.ESRCH end
 	if not syscalls[sysname] then return nil, errno.ENOSYS end

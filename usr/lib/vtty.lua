@@ -560,7 +560,7 @@ function vtty:putc(c)
 	end
 
 	if self.y > self.h then
-		self:scrollDown(1)
+		self:scrollUp(1)
 	end
 end
 
