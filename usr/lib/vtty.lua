@@ -204,35 +204,256 @@ function vtty:enableBlink()
 	self:showCursor()
 end
 
+---@param n? integer
+function vtty:scrollUp(n)
+	n = n or 1
+	local w, h = self.controller.getResolution()
+	self.controller.copy(1, 1, w, h, 0, -n)
+	self.controller.fill(1, h-n+1, w, n, " ")
+	self.y = math.clamp(self.y - n, 1, h)
+end
+
+---@param n? integer
+function vtty:scrollDown(n)
+	n = n or 1
+	local w, h = self.controller.getResolution()
+	self.controller.copy(1, 1, w, h, 0, n)
+	self.controller.fill(1, 1, w, n, " ")
+	self.y = math.clamp(self.y + n, 1, h)
+end
+
 ---@param contents string
 ---@param action string
 function vtty:doCSI(contents, action)
+	-- CSIs can have "intermediate bytes", for some fucking reason
+	local params = ""
+
+	while #contents > 0 and contents:byte() >= 0x30 and contents:byte() <= 0x3F do
+		params = params .. contents:sub(1, 1)
+		contents = contents:sub(2)
+	end
+
+	---@type (number?)[]
+	local nums = string.split(params, ";")
+	for i=1,#nums do nums[i] = tonumber(nums[i]) end
+
+	local w, h = self.controller.getResolution()
+
+	if action == "A" then
+		local n = nums[1] or 1
+		self.y = math.clamp(self.y - n, 1, h)
+		return
+	end
+	if action == "B" then
+		local n = nums[1] or 1
+		self.y = math.clamp(self.y + n, 1, h)
+		return
+	end
+	if action == "C" then
+		local n = nums[1] or 1
+		self.x = math.clamp(self.x + n, 1, w)
+		return
+	end
+	if action == "D" then
+		local n = nums[1] or 1
+		self.x = math.clamp(self.x - n, 1, w)
+		return
+	end
+	if action == "E" then
+		local n = nums[1] or 1
+		self.x = 1
+		self.y = math.clamp(self.y + n, 1, h)
+		return
+	end
+	if action == "F" then
+		local n = nums[1] or 1
+		self.x = 1
+		self.y = math.clamp(self.y - n, 1, h)
+		return
+	end
+	if action == "G" then
+		local n = nums[1] or 1
+		self.x = math.clamp(n, 1, w)
+		return
+	end
+	if action == "H" then
+		local n = nums[1] or 1
+		local m = nums[2] or 1
+		self.x = math.clamp(n, 1, w)
+		self.y = math.clamp(m, 1, h)
+		return
+	end
+	if action == "J" then
+		local n = nums[1] or 0
+		if n == 0 then
+			self.controller.fill(self.x, self.y, w - self.x + 1, 1, " ")
+			self.controller.fill(1, self.y + 1, 1, h - self.y, " ")
+		elseif n == 1 then
+			self.controller.fill(1, 1, 1, self.y-1, " ")
+			self.controller.fill(1, self.y, self.x, 1, " ")
+		elseif n == 2 then
+			self.controller.fill(1, 1, w, h, " ")
+		end
+		return
+	end
+	if action == "K" then
+		local n = nums[1] or 0
+		if n == 0 then
+			self.controller.fill(self.x, self.y, w - self.x + 1, 1, " ")
+		elseif n == 1 then
+			self.controller.fill(1, self.y, self.x, 1, " ")
+		elseif n == 2 then
+			self.controller.fill(1, self.y, w, 1, " ")
+		end
+		return
+	end
+	if action == "S" then
+		self:scrollUp(nums[1])
+		return
+	end
+	if action == "T" then
+		self:scrollDown(nums[1])
+		return
+	end
+	if action == "m" then
+		---@cast nums (number?)[]
+		local function pop()
+			return table.remove(nums, 1) or 0
+		end
+		if #nums == 0 then nums = {0} end
+		while #nums > 0 do
+			local op = pop()
+			if op == 0 then
+				self.controller.setForeground(self.defaultFg)
+				self.controller.setBackground(self.defaultBg)
+			elseif op == 7 then
+				self:swapColors()
+			elseif op == 8 then
+				-- TODO: conceal
+			elseif op == 28 then
+				-- TODO: un-conceal
+			elseif op >= 30 and op <= 37 then
+				self.controller.setForeground(self.stdColors[op])
+			elseif op >= 90 and op <= 97 then
+				self.controller.setForeground(self.stdColors[op])
+			elseif op >= 40 and op <= 47 then
+				self.controller.setForeground(self.stdColors[op-10])
+			elseif op >= 100 and op <= 107 then
+				self.controller.setForeground(self.stdColors[op-10])
+			elseif op == 38 then
+				local clr = self.defaultFg
+				local n = pop()
+				if n == 5 then
+					clr = self.color256[pop()]
+				elseif n == 2 then
+					local r = pop()
+					local g = pop()
+					local b = pop()
+					clr = vtty.color(r, g, b)
+				end
+				self.controller.setForeground(clr)
+			elseif op == 48 then
+				local clr = self.defaultFg
+				local n = pop()
+				if n == 5 then
+					clr = self.color256[pop()]
+				elseif n == 2 then
+					local r = pop()
+					local g = pop()
+					local b = pop()
+					clr = vtty.color(r, g, b)
+				end
+				self.controller.setBackground(clr)
+			elseif op == 39 then
+				self.controller.setForeground(self.defaultFg)
+			elseif op == 49 then
+				self.controller.setForeground(self.defaultBg)
+			end
+		end
+	end
+
 	if action == "n" then
-		if contents == "6" then
+		if params == "6" then
 			self.keybuf = self.keybuf .. string.format("\x1b[%d;%dR", self.x, self.y)
 			return
 		end
-		if contents == "7" then
-			local w, h = self.controller.getResolution()
+		if params == "7" then
 			self.keybuf = self.keybuf .. string.format("\x1b[%d;%dR", w, h)
 			return
 		end
-		if contents == "8" then
-			local w, h = self.controller.maxResolution()
-			self.keybuf = self.keybuf .. string.format("\x1b[%d;%dR", w, h)
+		if params == "8" then
+			local mw, mh = self.controller.maxResolution()
+			self.keybuf = self.keybuf .. string.format("\x1b[%d;%dR", mw, mh)
 			return
 		end
 		return
 	end
+	if action == "i" then
+		-- dont care about AUX port
+		return
+	end
 	if action == "h" then
-		if contents == "?25" then
+		if params == "?25" then
+			self:enableBlink()
 			self:showCursor()
+		end
+		if params == "?1004" then
+			-- TODO: enable focus reporting
+			return
+		end
+		if params == "?2004" then
+			-- bracketed paste mode is remapped to key up enabled
+			self.keyUpEnabled = true
+			return
 		end
 		return
 	end
 	if action == "l" then
-		if contents == "?25" then
+		if params == "?25" then
+			self:disableBlink()
 			self:hideCursor()
+		end
+		if params == "?1004" then
+			-- TODO: enable focus reporting
+			return
+		end
+		if params == "?2004" then
+			-- bracketed paste mode is remapped to key up enabled
+			self.keyUpEnabled = true
+			return
+		end
+		return
+	end
+	if action == "U" then
+		-- from UlOS, with minor changes
+		if nums[1] == 1 then
+			self.controller.fill(nums[2] or 1, nums[3] or 1, nums[4] or w, nums[5] or h, unicode.char(nums[6] or 32))
+			return
+		end
+		if nums[1] == 2 then
+			self.controller.copy(nums[2] or 1, nums[3] or 1, nums[4] or w, nums[5] or h, nums[6] or 0, nums[7] or 0)
+			return
+		end
+		if nums[1] == 3 then
+			self.controller.setResolution(nums[2] or w, nums[3] or h)
+			return
+		end
+		if nums[1] == 4 then
+			local x = nums[2] or self.x
+			local y = nums[3] or self.y
+			local c, f, g = self.controller.get(x, y)
+			-- TODO: decode out the UTF-8 instead of using string.char
+			self.keybuf = self.keybuf .. string.format("\x1b[%d;%d;%dR", string.byte(c), f, g)
+			return
+		end
+		return
+	end
+	if action == "v" then
+		if nums[1] == 1 then
+			local free = self.controller.freeMemory()
+			local total = self.controller.totalMemory()
+			self.keybuf = self.keybuf .. string.format("\x1b[%d;%dR", free, total)
+			return
 		end
 		return
 	end
@@ -339,9 +560,7 @@ function vtty:putc(c)
 	end
 
 	if self.y > self.h then
-		self.controller.copy(1, 2, self.w, self.h-1, 0, -1)
-		self.y = self.h
-		self.controller.fill(1, self.y, self.w, 1, " ")
+		self:scrollDown(1)
 	end
 end
 

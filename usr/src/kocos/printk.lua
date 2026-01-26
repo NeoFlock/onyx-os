@@ -277,7 +277,7 @@ if gpu and screen then
 			local n = nums[1] or 1
 			component.invoke(gpu, "copy", 1, 1, w, h, 0, -n)
 			component.invoke(gpu, "fill", 1, h-n+1, w, n, " ")
-			y = math.clamp(y - n, 1, h)
+			y = math.clamp(y + n, 1, h)
 			return
 		end
 		if action == "m" then

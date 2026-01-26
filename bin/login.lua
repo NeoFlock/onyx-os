@@ -18,14 +18,7 @@ k.setexectime(4)
 ---@type table<string, vtty>
 local screenTerms = {}
 
----@type vtty?
-local mainTTY
-
----@param fmt string
-local function writef(fmt, ...)
-	if not mainTTY then return end
-	mainTTY:write(string.format(fmt, ...))
-end
+local ttyNum = 0
 
 ---@param screen string
 local function setupScreen(screen)
@@ -80,10 +73,6 @@ local function setupScreen(screen)
 	term:initController()
 	term.hw[1] = screen
 
-	mainTTY = mainTTY or term
-
-	term:write(_OSVERSION .. "!\n")
-
 	local c, err = k.fork(function()
 		for i=0,3 do k.close(i) end
 		local stdout = k.openstream {
@@ -100,7 +89,8 @@ local function setupScreen(screen)
 	end)
 
 	if c then
-		term:write("Pid: " .. c .. "\n")
+		ttyNum = ttyNum + 1
+		term:write(string.format("tty #%d (pid %d)\n", ttyNum, c))
 	else
 		term:write("Error: " .. err .. "\n")
 	end
