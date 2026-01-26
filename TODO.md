@@ -6,14 +6,6 @@
 - Make file permissions exist and matter
 - Add some kind of inotify-like system
 
-## New resource model system
-
-A way to unify files, sockets, devices and locks as *resources.*
-
-A resource would internally just be a `{type: "file"|"socket"|"dev"|"lock", refc: integer, callback: (function(action: string, ...): ...)}`.
-
-That way, writing simply means `local ok, err = resource.callback("write", "data")`
-
 # For the build system
 - Make `luatok` support all Lua syntax properly
 - Make `luamin` rename locals
