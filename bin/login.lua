@@ -75,7 +75,6 @@ local function setupScreen(screen)
 	term.hw[1] = screen
 
 	local c, err = k.fork(function()
-		for i=0,3 do k.close(i) end
 		local stdout = k.openstream {
 			flags = 0,
 			rc = 1,
@@ -99,6 +98,7 @@ local function setupScreen(screen)
 		k.dup2(stdout, 1)
 		k.dup2(stdout, 2)
 		k.dup2(stdout, 3)
+		term:enableBlink()
 		assert(k.exec("/bin/prompt.lua"))
 	end)
 

@@ -177,6 +177,18 @@ function displayd.get(target, x, y)
 	return utils.getGPU().get(x, y)
 end
 
+---@param target string|integer
+function displayd.getForeground(target)
+	utils.switchToTarget(target)
+	return utils.getGPU().getForeground()
+end
+
+---@param target string|integer
+function displayd.getBackground(target)
+	utils.switchToTarget(target)
+	return utils.getGPU().getBackground()
+end
+
 ---@param screen string
 ---@param w integer
 ---@param h integer

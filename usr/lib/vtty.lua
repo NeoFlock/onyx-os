@@ -47,6 +47,7 @@ local keys = keyboard.keys
 ---@field defaultBg integer
 ---@field keysHeld table<integer, boolean>
 ---@field target? integer
+---@field blinktimer? integer
 local vtty = {}
 vtty.__index = vtty
 
@@ -156,6 +157,7 @@ function vtty.create(controller, w, h, termname, stdColors)
 		defaultFg = stdColors[37],
 		defaultBg = stdColors[30],
 		keysHeld = {},
+		blinktimer = nil,
 	}, vtty)
 end
 
@@ -179,8 +181,8 @@ end
 
 function vtty:toggleCursor()
 	self.lightOn = not self.lightOn
-	self:swapColors()
 	local c = self.controller.get(self.x, self.y)
+	self:swapColors()
 	self.controller.set(self.x, self.y, c)
 end
 
@@ -196,12 +198,17 @@ end
 
 function vtty:disableBlink()
 	-- blinking is not yet implemented
-	self:hideCursor()
+	if not self.blinktimer then return end
+	k.close(self.blinktimer)
+	self.blinktimer = nil
 end
 
 function vtty:enableBlink()
 	-- blinking is not yet implemented
-	self:showCursor()
+	if self.blinktimer then return end
+	self.blinktimer = assert(k.mktimer(0.5, function()
+		self:toggleCursor()
+	end, math.huge))
 end
 
 ---@param n? integer
