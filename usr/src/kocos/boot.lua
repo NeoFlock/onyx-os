@@ -78,28 +78,6 @@ local initProc = Kocos.process.fork(Kocos.process.root, function()
 	Kocos.panickf("COULD NOT FIND INIT PROGRAM!\nSearched: %s\n", table.concat(initPaths, "\n"))
 end)
 Kocos.process.init = initProc
-
-initProc.fds[1] = Kocos.fs.fd_from_rwf(function(len)
-	return Kocos.scr_read(len)
-end, function(data)
-	local bufSize = 1024
-	if #data <= bufSize then
-		Kocos.scr_write(data)
-		return true
-	end
-	-- makes it so you can't write 1MB and freeze the system
-	for i=1,#data,bufSize do
-		local buf = data:sub(i, i+bufSize - 1)
-		Kocos.scr_write(buf)
-		coroutine.yield()
-	end
-	return true
-end, nil, function(...) return Kocos.scr_ioctl(...) end)
-
-initProc.fds[0] = initProc.fds[1]
-initProc.fds[2] = initProc.fds[1]
-initProc.fds[3] = initProc.fds[1]
-
 Kocos.process.resume(initProc)
 
 local function justDie()

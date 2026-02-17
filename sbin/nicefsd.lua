@@ -31,7 +31,12 @@ local NULL = 0
 ---@field data string
 ---@field dirty boolean
 
-local blockCacheSize = tonumber(os.getenv("NICEFS_BCACHE")) or 4096
+local memtotal = k.sysinfo().memtotal
+local defBcache = 32768
+if memtotal < 1*1024*1024 then
+	defBcache = 8192
+end
+local blockCacheSize = tonumber(os.getenv("NICEFS_BCACHE")) or defBcache
 
 ---@class nicefs.state
 ---@field dev Kocos.fs.partition
@@ -43,6 +48,7 @@ local blockCacheSize = tonumber(os.getenv("NICEFS_BCACHE")) or 4096
 ---@field sectorSize integer
 ---@field rootDir nicefs.entry
 ---@field maxBlock integer
+---@field fileStates table<string, nicefs.filestate>
 
 local nicefs = {}
 
@@ -340,6 +346,7 @@ assert(k.mkdriver(function(req, ...)
 			maxCacheSize = math.floor(blockCacheSize / sectorSize),
 			sectorSize = sectorSize,
 			maxBlock = math.floor(dev.getCapacity() / sectorSize),
+			fileStates = {},
 		}
 		return "nicefs", state
 	end

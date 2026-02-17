@@ -8,6 +8,7 @@ Kocos.event = {}
 Kocos.event.listeners = {}
 ---@type table<integer, {times: integer, interval: number, deadline: number, func: function}>
 Kocos.event.timers = {}
+Kocos.event.nextTimer = 0
 
 function Kocos.event.notifyListeners(...)
 	if select("#", ...) == 0 then return end
@@ -63,8 +64,10 @@ end
 function Kocos.event.timer(interval, func, times)
 	times = times or 1
 
-	local id = #Kocos.event.timers
+	local id = Kocos.event.nextTimer
+	-- just in case
 	while Kocos.event.timers[id] do id = id + 1 end
+	Kocos.event.nextTimer = id + 1
 	Kocos.event.timers[id] = {
 		interval = interval,
 		func = func,

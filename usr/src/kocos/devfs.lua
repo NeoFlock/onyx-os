@@ -17,7 +17,7 @@ local function computeDeviceFiles()
 			name = "hd" .. devfsAddrSuffix(addr)
 		elseif type == "partition" then
 			local devaddr = component.invoke(addr, "getDeviceAddress") or "ERR"
-			name = "hd" .. devfsAddrSuffix(devaddr) .. "p" .. devfsAddrSuffix(addr)
+			name = "hd" .. devfsAddrSuffix(devaddr) .. "_p" .. devfsAddrSuffix(addr)
 		elseif type == "serial" then -- imaginary component for all serial comms
 			name = "usb" .. devfsAddrSuffix(addr)
 		elseif type == "gpu" then
@@ -176,6 +176,9 @@ local function devfsDevToFD(dev, mode)
 					end
 					if action == "devfs:doc" then
 						return component.doc(dev, ...)
+					end
+					if action == "devfs:readpart" then
+						return fs.getParittionsOf(d)
 					end
 					return component.invoke(dev, action, ...)
 				end

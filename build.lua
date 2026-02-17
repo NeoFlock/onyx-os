@@ -41,7 +41,8 @@ local buildInfo = {
 	},
 	kocos = {
 		type = "cat",
-		luamin = true,
+		luamin = os.getenv("ONYX_MIN") ~= nil,
+		segment = os.getenv("ONYX_SEGMENT") ~= nil,
 		files = {
 			"usr/src/kocos/bootstrap.lua",
 			"usr/src/kocos/utils.lua",
@@ -50,7 +51,7 @@ local buildInfo = {
 			"usr/src/kocos/printk.lua",
 			"usr/src/kocos/errno.lua",
 			"usr/src/kocos/drivers.lua",
-			"usr/src/kocos/debugger.lua",
+			os.getenv("ONYX_NODBG") and "" or "usr/src/kocos/debugger.lua",
 			"usr/src/kocos/ramfs.lua",
 			"usr/src/kocos/fs.lua",
 			"usr/src/kocos/devfs.lua",
@@ -90,13 +91,20 @@ local function runBuild(thing)
 		-- Directly merge files
 		local outcode = ""
 		for _, file in ipairs(entry.files) do
-			print("Reading", file)
-			local f = assert(io.open(file, "rb"))
-			outcode = outcode .. assert(f:read("a"), "no code")
-			f:close()
-		end
-		if entry.luamin then
-			outcode = luamin(outcode)
+			if file ~= "" then
+				print("Reading", file)
+				local f = assert(io.open(file, "rb"))
+				local fcode = assert(f:read("a"), "no code")
+				if entry.luamin then
+					fcode = luamin(fcode)
+				end
+				if entry.segment then
+					fcode = fcode .. "--[[KOCOS_SEGMENT]]"
+				end
+				if fcode:sub(-1, -1) ~= " " then fcode = fcode .. " " end
+				outcode = outcode .. fcode
+				f:close()
+			end
 		end
 		local f = assert(io.open(entry.out, "wb"))
 		f:write(outcode)

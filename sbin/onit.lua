@@ -7,14 +7,16 @@ assert(Kocos, "not running in kernel address space")
 local c = conf.decode(assert(readfile("/etc/onit.conf")))
 
 _OSVERSION = c.osName or "KOCOS unknown"
-local osColor = c.osColor or "32"
+local osColor = tonumber(c.osColor) or 0x2473c8
 
 local biosTime = Kocos.biosBootTime
 local kBootTime = k.uptime()
 local lastCmdTime = kBootTime
-print("Welcome to \x1b[" .. osColor .. "m" .. _OSVERSION .. "\x1b[0m!")
+Kocos.setprintcolor(osColor)
+Kocos.printk(Kocos.L_RAWTEXT, "Welcome to " .. _OSVERSION .. "!")
+Kocos.setprintcolor(0xFFFFFF)
 
-if c.closeTerm ~= "false" then for f=0,3 do k.close(f) end end
+-- no stdio btw
 
 local onitServiceDir = c.serviceDir or "/etc/onit.d"
 local disabledServices = ((c.disabled or "") ~= "") and string.split(c.disabled, "\n") or {}
@@ -128,7 +130,6 @@ assert(k.registerDaemon("initd", function(cpid, action, ...)
 		-- clear screen
 		Kocos.scr_write("\x1b[2J\x1b[H")
 		Kocos.disableScreen = true
-		Kocos.disableScreenLogging = true
 		return
 	end
 	if action == "log" then
@@ -184,20 +185,20 @@ end))
 for _, s in ipairs(order) do
 	local info = services[s]
 	if table.contains(disabledServices, info.name) then
-		Kocos.printkf(Kocos.L_INFO, "\x1b[31mSkipping %s (disabled)\x1b[0m", info.name)
+		Kocos.printkf(Kocos.L_INFO, "Skipping %s (disabled)", info.name)
 	else
 		lastCmdTime = k.uptime()
 		info.loadTime = lastCmdTime
 		if info.type == "spawn" then
 			toComplete = info
-			Kocos.printkf(Kocos.L_INFO, "\x1b[32mSpawing %s...\x1b[0m", info.name)
+			Kocos.printkf(Kocos.L_INFO, "Spawing %s...", info.name)
 			assert(k.fork(function()
 				info.pid = k.getpid()
 				assert(k.exec(info.exec, info.argv, nil, getAddress(info.addr)))
 			end))
 			while toComplete do coroutine.yield() end
 		elseif info.type == "run" then
-			Kocos.printkf(Kocos.L_INFO, "\x1b[32mRunning %s...\x1b[0m", info.name)
+			Kocos.printkf(Kocos.L_INFO, "Running %s...", info.name)
 			assert(os.executeBin(info.exec, info.argv, nil, getAddress(info.addr)), "command failed")
 		end
 	end

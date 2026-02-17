@@ -16,6 +16,9 @@ Integers are stored in **big-endian**, for simplicity when decoding in Lua 5.2 u
 
 Null blocks are at a mythical sector `0`.
 Sector indexes are stored as 16-bit unsigned integers.
+They're offset by 2, so sector index `1` means sector `3`.
+With 512 byte sectors, taking into account sector index 0 referring to the superblock,
+it leads to supporting roughly 32MiB of storage maximum.
 
 The data structures are defined as the following C types:
 ```c
@@ -26,18 +29,20 @@ struct superblock {
     uint16_t freeList;
     uint16_t activeBlockCount;
     entry rootDirectory;
+    // rest of sector should be 0.
 };
 
 // 32 bytes
 struct entry {
     char name[16]; // padded with NULLs. All NULLs should be removed when reading out the name of the file.
     uint24_t fileSizeAndMode; // highest 4 bits are for the file mode, more on that later
-    // firstBlock can be null, in which case there is no data associated with the entry. This allows 0 byte files to truly take up 0 bytes.
-    uint16_t firstBlock;
+    // firstStorage can be null, in which case there is no data associated with the entry. This allows 0 byte files to truly take up 0 bytes.
+    // points to a fileStorage struct.
+    uint16_t firstStorage;
     // 11 bytes reserved, should be 0.
 };
 
-// if you shift fileSizeAndMode by 20 bytes to the right, or do an integer division by 2^20, you'll get a 4-bit fileMode
+// if you shift fileSizeAndMode by 20 bits to the right, or do an integer division by 2^20, you'll get a 4-bit fileMode
 enum fileMode {
     // file can be read by anyone
     readable = 1,
@@ -49,21 +54,30 @@ enum fileMode {
     directory = 8,
 };
 
-// an actual block of data pointed to by, for example, firstBlock in the entry.
-struct dataBlock {
-    uint16_t nextBlock; // Null for the last block
-    // 30 bytes reserved, should be 0. This simplifies reading directories as it makes the blocks fit an even amount of entries.
-    uint8_t data[]; // rest of sector
+// this stores the blocks used by the file
+struct fileStorage {
+    // the next file storage in line.
+    // if null, 0.
+    uint16_t nextFileStorage;
+    uint16_t blocks[];
+};
+
+// a block which was freed.
+struct freeBlock {
+    // next block in the free list
+    uint16_t nextFreeBlock;
+    // rest is random unallocated garbage.
 };
 ```
 
 `nextFreeBlock` points to the first sector in the unused space of the filesystem. `freeList` should point to the most recently freed block, and represents a
-singled linked list of blocks which can be re-used. `activeBlockCount` represents the number of blocks which are in active use, and should be at least 2, as
-sector 1 and the superblock do count. This, times the sector size, is the total space used of the storage volume.
+singled linked list of blocks which can be re-used. `activeBlockCount` represents the number of blocks which are in active use, however the superblock does not
+count. This, plus 2, times the sector size, is the space used of the storage volume.
 
-For directories, the file size should be 0. Empty filename means NULL entry.
-Block list is NULL-terminated.
+For directories, the file size should be the amount of entries allocated. Empty filename means NULL entry.
+Free list and the fileStorage lists is NULL-terminated.
 
 # Booting
 
 When booting off of a partition or device with a `nicefs` filesystem on it, it should load `init.lua` off of it just like on a managed filesystem.
+In general, the FS should be treated like a managed filesystem, and thus the booting convention of managed filesystems should be used.

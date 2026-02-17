@@ -9,8 +9,9 @@ if kargs.debugger then
 	component.invoke(kargs.debugger, "log", "Selected as KGDB")
 end
 
-local kernelCode = {}
+local kernelCode = ""
 local kernelF = assert(component.invoke(fs, "open", "boot/vmkocos"))
+local segment = 0
 
 while true do
 	local code, err = component.invoke(fs, "read", kernelF, math.huge)
@@ -18,11 +19,28 @@ while true do
 		error(err)
 	end
 	if not code then break end
-	table.insert(kernelCode, code)
+	kernelCode = kernelCode .. code
+	while true do
+		local segTerm, segTermEnd = string.find(kernelCode, "--[[KOCOS_SEGMENT]]", nil, true)
+		if segTerm then
+			segment = segment + 1
+			component.invoke(kargs.debugger, "log", "segment: " .. segment)
+			local rawCode = string.sub(kernelCode, 1, segTerm-1)
+			local f = assert(load(rawCode, "=kocos_seg" .. segment))
+			f()
+			kernelCode = string.sub(kernelCode, segTermEnd+1)
+		else
+			break
+		end
+	end
 end
 
-local f = assert(load(function()
-	return table.remove(kernelCode, 1)
-end, "=kocos"))
-kernelCode = nil -- allow it to be GC'd
-f("kocos", kargs)
+component.invoke(fs, "close", kernelF)
+
+component.invoke(kargs.debugger, "log", "size: " .. #kernelCode)
+
+if #kernelCode > 0 then
+	local f = assert(load(kernelCode, "=kocos"))
+	kernelCode = "" -- allow it to be GC'd
+	f("kocos", kargs)
+end

@@ -44,7 +44,6 @@ else
 end
 
 Kocos.disableScreen = false
-Kocos.disableScreenLogging = false
 Kocos.disableDefaultPanicHandler = false
 Kocos.hostname = Kocos.args.hostname or "localhost"
 

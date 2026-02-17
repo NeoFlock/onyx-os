@@ -66,10 +66,27 @@ end
 
 ---@param drive Kocos.device
 ---@return string[]?
+function fs.retainPartitionsFor(partitions, drive)
+	local toRem = {}
+	for part in component.list("partition", true) do
+		if component.invoke(part, "getDeviceAddress") == drive.address and not table.contains(partitions, part) then
+			table.insert(toRem, part)
+		end
+	end
+	for _, dead in ipairs(toRem) do
+		component.remove(dead)
+	end
+end
+
+---@param drive Kocos.device
+---@return string[]?
 function fs.getPartitionsOf(drive)
 	for _, driver in ipairs(Kocos.drivers) do
 		local parts = driver("FS-getpartitions", drive)
-		if parts then return parts end
+		if parts then
+			fs.retainPartitionsFor(parts, drive)
+			return parts
+		end
 	end
 end
 
@@ -504,4 +521,3 @@ Kocos.printk(Kocos.L_DEBUG, "filesystem subsystem loaded")
 Kocos.printk(Kocos.L_INFO, "registering default drivers")
 Kocos.addDriver(fs._defaultManagedFS)
 Kocos.printk(Kocos.L_INFO, "managedfs driver registered")
-

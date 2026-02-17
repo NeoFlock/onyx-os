@@ -3,14 +3,17 @@
 local errno = Kocos.errno
 
 ---@class Kocos.Handle
----@field type "file"|"socket"|"device"|"lock"
+---@field type "file"|"socket"|"device"|"lock"|"pipe"|"timer"
 ---@field state string
 ---@field rc number
 ---@field handle fun(req: Kocos.HandleAction, ...): ...
 ---@field flags integer
 ---@field listener? function
+---@field evbuf? table[]
 
 local handles = {}
+
+handles.MAX_EVBUF = 8
 
 ---@param h Kocos.Handle
 ---@param data string
@@ -50,7 +53,28 @@ end
 ---@param h Kocos.Handle
 ---@param ev string
 function handles.notify(h, ev, ...)
-	if h.listener then h.listener(ev, ...) end
+	if h.listener then
+		h.listener(ev, ...)
+	else
+		h.evbuf = h.evbuf or {}
+		table.insert(h.evbuf, {...})
+		while #h.evbuf > handles.MAX_EVBUF do
+			table.remove(h.evbuf, 1)
+		end
+	end
+end
+
+---@parma h Kocos.Handle
+---@param f function?
+function handles.setlistener(h, f)
+	if h.evbuf and f then
+		for _, ev in ipairs(h.evbuf) do
+			f(table.unpack(ev))
+		end
+		-- save the memory!!
+		h.evbuf = nil
+	end
+	h.listener = f
 end
 
 ---@param h Kocos.Handle
@@ -60,6 +84,10 @@ function handles.close(h)
 		h.state = "closed"
 		h.handle("close")
 	end
+end
+
+function handles.unusable(...)
+	return nil, errno.EBADF
 end
 
 ---@param h Kocos.Handle
@@ -89,6 +117,83 @@ function handles.accept(h)
 		return nil, errno.EBADF
 	end
 	return h.handle("accept")
+end
+
+---@return Kocos.Handle reader, Kocos.Handle writer
+function handles.mkpipe()
+	---@type string?
+	local sharedBuf = ""
+
+	---@type Kocos.Handle, Kocos.Handle
+	local r, w
+	r = {
+		type = "pipe",
+		state = "reader",
+		rc = 1,
+		flags = 0,
+		handle = function(act, len)
+			if act == "read" then
+				if not sharedBuf then
+					return nil, errno.EPIPE
+				end
+				if len > #sharedBuf then len = #sharedBuf end
+				len = math.floor(len)
+				local chunk = sharedBuf:sub(1, len)
+				sharedBuf = sharedBuf:sub(len+1)
+				return chunk
+			end
+			if act == "close" then
+				sharedBuf = nil
+				return true
+			end
+			return nil, errno.EBADF
+		end,
+	}
+	w = {
+		type = "pipe",
+		state = "writer",
+		rc = 1,
+		flags = 0,
+		handle = function(act, data)
+			if act == "write" then
+				if not sharedBuf then
+					return nil, errno.EPIPE
+				end
+				sharedBuf = sharedBuf .. data
+				-- for async I/O
+				handles.notify(w, Kocos.fs.EV_DATAREADY, #data)
+				return true
+			end
+			if act == "close" then
+				sharedBuf = nil
+				return true
+			end
+			return nil, errno.EBADF
+		end,
+	}
+	return r, w
+end
+
+---@param interval number
+---@param func function
+---@param times? integer
+---@return Kocos.Handle
+function handles.mktimer(interval, func, times)
+	local t = Kocos.event.timer(interval, func, times)
+
+	---@type Kocos.Handle
+	return {
+		type = "timer",
+		handle = function(a)
+			if a == "close" then
+				Kocos.event.cancel(t)
+			end
+			return nil, errno.EBADF
+		end,
+		rc = 1,
+		state = "",
+		flags = 0,
+	}
 end
 
 Kocos.handles = handles

@@ -341,7 +341,14 @@ function syscalls.fcntl(fd, action, ...)
 		if type(listener) ~= "function" and type(listener) ~= "nil" then
 			return nil, errno.EINVAL
 		end
-		f.listener = listener
+		if listener then
+			local fun = listener
+			-- sandboxing the listener
+			listener = function(...)
+				process.pcall(proc, fun, ...)
+			end
+		end
+		Kocos.handles.setlistener(f, listener)
 		return true
 	end
 	if action == Kocos.fs.F_GETFL then
@@ -365,6 +372,12 @@ function syscalls.fcntl(fd, action, ...)
 		end
 		handles.notify(f, ...)
 		return true
+	end
+	if action == "F_GETTYPE" then
+		return f.type
+	end
+	if action == "F_GETSTATE" then
+		return f.state
 	end
 	return nil, errno.EINVAL
 end
@@ -1089,6 +1102,35 @@ end
 function syscalls.setexectime(desiredTime)
 	process.current.desiredExecTime = desiredTime
 	return true
+end
+
+function syscalls.mkpipe()
+	local proc = process.current
+	local reader, writer = Kocos.handles.mkpipe()
+	return process.moveResource(proc, reader), process.moveResource(proc, writer)
+end
+
+function syscalls.mktimer(interval, func, times)
+	local proc = process.current
+	interval = interval or 1
+	func = func or function()
+		process.raise(proc, process.SIGALRM)
+	end
+	times = times or 1
+	if type(interval) ~= "number" then
+		return nil, errno.EINVAL
+	end
+	if type(func) ~= "function" then
+		return nil, errno.EINVAL
+	end
+	if type(times) ~= "number" then
+		return nil, errno.EINVAL
+	end
+
+	local h = Kocos.handles.mktimer(interval, function()
+		process.pcall(proc, func)
+	end, times)
+	return process.moveResource(proc, h)
 end
 
 Kocos.syscalls = syscalls
