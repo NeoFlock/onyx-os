@@ -344,9 +344,9 @@ function vtty:doCSI(contents, action)
 			elseif op >= 90 and op <= 97 then
 				self.controller.setForeground(self.stdColors[op])
 			elseif op >= 40 and op <= 47 then
-				self.controller.setForeground(self.stdColors[op-10])
+				self.controller.setBackground(self.stdColors[op-10])
 			elseif op >= 100 and op <= 107 then
-				self.controller.setForeground(self.stdColors[op-10])
+				self.controller.setBackground(self.stdColors[op-10])
 			elseif op == 38 then
 				local clr = self.defaultFg
 				local n = pop()
@@ -360,7 +360,7 @@ function vtty:doCSI(contents, action)
 				end
 				self.controller.setForeground(clr)
 			elseif op == 48 then
-				local clr = self.defaultFg
+				local clr = self.defaultBg
 				local n = pop()
 				if n == 5 then
 					clr = self.color256[pop()]
@@ -374,7 +374,7 @@ function vtty:doCSI(contents, action)
 			elseif op == 39 then
 				self.controller.setForeground(self.defaultFg)
 			elseif op == 49 then
-				self.controller.setForeground(self.defaultBg)
+				self.controller.setBackground(self.defaultBg)
 			end
 		end
 	end
