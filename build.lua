@@ -36,8 +36,24 @@ local buildInfo = {
 	onyx = {
 		type = "none",
 		deps = {
-			"kocos", -- need the kernel, obviously
+			os.getenv("ONYX_KERNEL") or "kocos", -- need the kernel, obviously
 		},
+	},
+	new_kocos = {
+		type = "cat",
+		luamin = os.getenv("ONYX_MIN") ~= nil,
+		segment = os.getenv("ONYX_SEGMENT") ~= nil,
+		files = {
+			"usr/src/new_kocos/utils.lua",
+			"usr/src/new_kocos/init.lua",
+			"usr/src/new_kocos/errno.lua",
+			"usr/src/new_kocos/modules.lua",
+			"usr/src/new_kocos/process.lua",
+			"usr/src/new_kocos/event.lua",
+			"usr/src/new_kocos/boot.lua",
+		},
+		out = "boot/vmkocos",
+		deps = {},
 	},
 	kocos = {
 		type = "cat",

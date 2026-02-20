@@ -1,14 +1,5 @@
 local fs = computer.getBootAddress()
 
----@type Kocos.config
-local kargs = {}
-
-kargs.debugger = component.list("ocelot")()
-
-if kargs.debugger then
-	component.invoke(kargs.debugger, "log", "Selected as KGDB")
-end
-
 local kernelCode = ""
 local kernelF = assert(component.invoke(fs, "open", "boot/vmkocos"))
 local segment = 0
@@ -37,10 +28,10 @@ end
 
 component.invoke(fs, "close", kernelF)
 
-component.invoke(kargs.debugger, "log", "size: " .. #kernelCode)
-
 if #kernelCode > 0 then
 	local f = assert(load(kernelCode, "=kocos"))
 	kernelCode = "" -- allow it to be GC'd
-	f("kocos", kargs)
+	f("kocos")
 end
+
+error("kernel halted")
