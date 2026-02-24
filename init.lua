@@ -31,7 +31,7 @@ component.invoke(fs, "close", kernelF)
 if #kernelCode > 0 then
 	local f = assert(load(kernelCode, "=kocos"))
 	kernelCode = "" -- allow it to be GC'd
-	f("kocos")
+	f()
 end
 
 error("kernel halted")
