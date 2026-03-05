@@ -12,7 +12,7 @@ Kocos.biotBootTime = computer.uptime()
 ---@type table<string, string>
 Kocos.cmdline = {}
 
----@type Kocos.ramfs?
+---@type string?
 Kocos.ramfs = nil
 
 ---@param cmdline string
@@ -178,11 +178,36 @@ Kocos.printkf(Kocos.L_DEBUG, "package.cpath: %s", package.cpath)
 ---@type table<string, function>
 syscalls = {} -- syscalls defined later in other files
 
+Kocos.execDeadline = math.huge
+
 ---@diagnostic disable: lowercase-global
 ---@param sysname string
 ---@return ...
 function syscall(sysname, ...)
 	-- TODO: syscall impl
+	local proc = Kocos.currentProcess()
+	if proc.state == "dead" then Kocos.sysyield() end
+
+	local now = computer.uptime()
+	if now > Kocos.execDeadline then Kocos.sysyield() end
+
+	if proc.debugger then
+		Kocos.sendSignal(proc.debugger, "SYSCALL", sysname, {...})
+	end
+
+	local sysfunc = syscalls[sysname]
+	if not sysfunc then return nil, Kocos.ESRCH end
+
+	local t = {pcall(sysfunc, ...)}
+
+	if proc.debugger then
+		Kocos.sendSignal(proc.debugger, "SYSRET", sysname, {...}, t)
+	end
+
+	if t[1] then
+		return table.unpack(t, 2)
+	end
+	return nil, t[2]
 end
 
 function syscalls.syscalls()

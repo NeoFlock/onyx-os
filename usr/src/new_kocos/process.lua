@@ -1,10 +1,26 @@
+local sysyieldobj = {}
+
+function Kocos.sysyield()
+	coroutine.yield(sysyieldobj)
+end
+
+Kocos.resume = coroutine.resume
+
+-- Magic
+coroutine.resume = function(co, ...)
+	while true do
+		local t = {Kocos.resume(co, ...)}
+		if t[1] and sysyieldobj == t[2] then
+			Kocos.sysyield()
+		else
+			return table.unpack(t)
+		end
+	end
+end
+
 ---@class Kocos.procmod
 ---@field data string
 ---@field src string
-
----@class Kocos.proclib
----@field modules table<string, Kocos.procmod>
----@field deps Kocos.proclib[]
 
 ---@class Kocos.vmproc
 ---@field state "running"|"dying"|"dead"|"finished"
@@ -19,7 +35,6 @@
 ---@field boundKmod string[]
 ---@field blockUntil (fun(): boolean)[]
 ---@field modules table<string, Kocos.procmod>
----@field libs Kocos.proclib[]
 ---@field stopped boolean
 ---@field cwd string
 ---@field root string
@@ -32,6 +47,7 @@
 ---@field signalHandlers table<string, function>
 ---@field proclocal table
 ---@field fds table<integer, Kocos.descriptor>
+---@field sleepUntil number
 
 ---@class Kocos.daemon
 ---@field proc Kocos.vmproc
@@ -58,7 +74,6 @@ Kocos.processes[0] = {
 	boundKmod = {},
 	blockUntil = {},
 	modules = {},
-	libs = {},
 	stopped = false,
 	cwd = "/",
 	root = "/",
@@ -71,6 +86,7 @@ Kocos.processes[0] = {
 	signalHandlers = {},
 	proclocal = {},
 	fds = {},
+	sleepUntil = 0,
 }
 
 Kocos.procStack[1] = Kocos.processes[0]
@@ -135,6 +151,10 @@ function Kocos.terminateProcess(proc, exit)
 	Kocos.sendSignal(proc, "SIGABRT")
 
 	-- TODO: cleanup
+	if proc.ev_listener then
+		Kocos.forget(proc.ev_listener)
+	end
+
 	for _, mod in ipairs(proc.boundKmod) do
 		Kocos.removeModule(mod)
 	end
@@ -149,7 +169,7 @@ function Kocos.terminateProcess(proc, exit)
 	end
 
 	if Kocos.currentProcess() == proc then
-		coroutine.yield()
+		Kocos.sysyield()
 		return
 	end
 end
@@ -157,6 +177,9 @@ end
 ---@param proc Kocos.vmproc
 ---@param sig string
 function Kocos.sendSignal(proc, sig, ...)
+	-- forbidden.
+	-- This prevends pkilling the kernel or init.
+	if proc.pid == 0 or proc.pid == 1 then return end
 	if sig == "SIGSTOP" then
 		proc.stopped = true
 		if Kocos.currentProcess() == proc then coroutine.yield() end
@@ -222,9 +245,15 @@ function Kocos.closeProcess(proc)
 	Kocos.terminateProcess(proc, 1)
 	proc.state = "dying"
 
-	local allKids = {}
-	for _, child in pairs(proc.children) do table.insert(allKids, child) end
-	for _, child in ipairs(allKids) do Kocos.closeProcess(child) end
+	-- Reparent children
+	while true do
+		local cpid, child = next(proc.children)
+		if not cpid or not child then break end
+
+		proc.children[cpid] = nil -- remove child
+		child.parent = Kocos.processes[1] or Kocos.processes[0]
+		child.parent.children[cpid] = child
+	end
 
 	if proc.parent then
 		proc.parent.children[proc.pid] = nil
@@ -234,46 +263,9 @@ function Kocos.closeProcess(proc)
 	proc.state = "dead"
 end
 
----@param lib Kocos.process.sharedLib
----@param module string
----@param refs? table
----@return Kocos.process.module?
-function Kocos.libreadmod(lib, module, refs)
-	refs = refs or {}
-	-- in case of cyclical bullshit dependencies
-	if refs[lib] then return end
-	refs[lib] = true
-
-	---@type Kocos.process.module?
-	local mod = lib.modules[module]
-	if mod then return mod end
-
-	for _, dep in ipairs(lib.deps) do
-		mod = Kocos.libreadmod(dep, module, refs)
-		if mod then return mod end
-	end
-end
-
----@param proc Kocos.process
----@param module string
----@return Kocos.process.module?
-function Kocos.readmod(proc, module)
-	---@type Kocos.process.module?
-	local mod = proc.modules[module]
-	if mod then return mod end
-
-	local refs = {}
-
-	for _, dep in ipairs(proc.deps) do
-		mod = Kocos.libreadmod(dep, module, refs)
-		if mod then return mod end
-	end
-end
-
 ---@class Kocos.procimage
 ---@field init function
 ---@field modules table<string, Kocos.procmod>
----@field deps string[]
 
 ---@param proc Kocos.vmproc
 function Kocos.resumeProcess(proc)
@@ -282,7 +274,8 @@ function Kocos.resumeProcess(proc)
 	if not proc.coro then return end
 	if coroutine.status(proc.coro) ~= "running" then return end
 	Kocos.pushProcess(proc)
-	local ok, err = coroutine.resume(proc.coro)
+	Kocos.execDeadline = computer.uptime() + 0.1
+	local ok, err = Kocos.resume(proc.coro)
 	Kocos.popProcess()
 
 	if not ok then
@@ -315,4 +308,25 @@ function syscalls.getpid(level)
 	local proc = Kocos.procStack[#Kocos.procStack - level]
 	if not proc then return nil, Kocos.ESRCH end
 	return proc.pid
+end
+
+function syscalls.proclocal()
+	return Kocos.currentProcess().proclocal
+end
+
+---@return integer[]
+function syscalls.getprocs()
+	local pids = {}
+	for pid in pairs(Kocos.processes) do
+		table.insert(pids, pid)
+	end
+	return pids
+end
+
+function syscalls.getuid()
+	return Kocos.currentProcess().uid
+end
+
+function syscalls.getgid()
+	return Kocos.currentProcess().gid
 end

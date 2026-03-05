@@ -46,10 +46,12 @@ local buildInfo = {
 		files = {
 			"usr/src/new_kocos/utils.lua",
 			"usr/src/new_kocos/init.lua",
+			"usr/src/new_kocos/event.lua",
+			"usr/src/new_kocos/component.lua",
 			"usr/src/new_kocos/errno.lua",
 			"usr/src/new_kocos/modules.lua",
 			"usr/src/new_kocos/process.lua",
-			"usr/src/new_kocos/event.lua",
+			"usr/src/new_kocos/fs.lua",
 			"usr/src/new_kocos/boot.lua",
 		},
 		out = "boot/vmkocos",
@@ -96,6 +98,7 @@ local function runBuild(thing)
 	if built[thing] then return end
 	built[thing] = true
 	local entry = buildInfo[thing]
+	assert(entry, "unknown build step: " .. thing)
 
 	if entry.deps then
 		for _, dep in ipairs(entry.deps) do runBuild(dep) end

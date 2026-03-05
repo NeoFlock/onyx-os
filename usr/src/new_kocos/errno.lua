@@ -46,3 +46,14 @@ Kocos.EADDRNOTAVAIL = "address not available"
 Kocos.EAFNOSUPPORT = "address family not supported"
 Kocos.EXDEV = "invalid cross-device link"
 Kocos.EHOSTISDOWN = "host is unreachable"
+
+---@return table<string, string>
+function syscalls.errnos()
+	local errnos = {}
+	for k, v in pairs(Kocos) do
+		if type(k) == "string" and k == string.upper(k) and string.sub(k, 1, 1) == "E" and type(v) == "string" then
+			errnos[k] = v
+		end
+	end
+	return errnos
+end

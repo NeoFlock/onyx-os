@@ -1,4 +1,6 @@
----@type table<string, fun(req: string, ...): ...>
+---@alias Kocos.module fun(req: string, ...): ...
+
+---@type table<string, Kocos.module>
 Kocos.mods = {}
 
 ---@param mod string
@@ -11,7 +13,7 @@ function Kocos.loadModule(mod, code, chunkname)
 	-- remove old one
 	Kocos.removeModule(mod)
 
-	local f, err = load(code, chunkname)
+	local f, err = load(code, chunkname, nil, _G)
 	if not f then return false, err end
 
 	local ok, handler = pcall(f)

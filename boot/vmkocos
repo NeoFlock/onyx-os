@@ -1,66 +1,12 @@
-Kocos = {}
-
-_KVERSION = "KOCOS v0.-1.0"
-_OSVERSION = _OSVERSION or "Unnamed KOCOS"
-
-local argv = {...}
-
----@alias Kocos.device {address: string, type: string, slot: integer}|table
-
----@class Kocos.config
----@field debugger? string
----@field root? string
----@field ramfs? Kocos.ramfs
----@field noOcelotLog? boolean
----@field minLog? integer
----@field pollInterval? number
---- For when <50% battery
----@field midBatteryPollInterval? number
---- For when <10% battery
----@field lowBatteryPollInterval? number
----@field minEventPoll? number
----@field useExtremelySecurePidGeneration? boolean
----@field packagePath? string
----@field packageCPath? string
----@field luaExecRT? string
----@field luaExecRTF? string
----@field hostname? string
----@field termStdColors? table<integer, integer>
----@field termDefaultFg? integer
----@field termDefaultBg? integer
-
-Kocos.biosBootTime = computer.uptime()
-
----@type Kocos.config
-Kocos.args = {}
-
-if argv[1] == "kocos" then
-	-- KOCOS boot protocol
-	Kocos.args = argv[2]
-elseif not argv[1] then
-	-- generic boot protocol
-else
-	error("Unknown boot protocol! This is catastrophic")
-end
-
-Kocos.disableScreen = false
-Kocos.disableDefaultPanicHandler = false
-Kocos.hostname = Kocos.args.hostname or "localhost"
-
-Kocos.args.minLog = Kocos.args.minLog or 1
-
-function Kocos.poweroff(reboot)
-	Kocos.event.notifyListeners("poweroff", reboot)
-	computer.shutdown(reboot)
-end
-
-package = {}
+--- Before init.lua, because it needs these utilities
+package = package or {}
 package.preload = {}
 package.loaded = {}
-package.path = Kocos.args.packagePath or "/lib/?.lua;/lib/?/init.lua;?.lua;?/init.lua;/usr/lib/?.lua;/usr/lib/?/init.lua;/usr/local/lib/?.lua;/usr/local/lib/?/init.lua"
-package.cpath = Kocos.args.packageCPath or "lib?.so;/lib/lib?.so;/usr/lib/lib?.so;/usr/local/lib/lib?.so"
+package.path = "/lib/?.lua;/lib/?/init.lua;?.lua;?/init.lua;/usr/lib/?.lua;/usr/lib/?/init.lua;/usr/local/lib/?.lua;/usr/local/lib/?/init.lua"
+package.cpath = "lib?.so;/lib/lib?.so;/usr/lib/lib?.so;/usr/local/lib/lib?.so"
 package.config = "/\n;\n?\n!\n-"
- ---@generic T
+
+---@generic T
 ---@param t T
 ---@return T
 function table.copy(t)
@@ -408,91 +354,330 @@ function package.searchpath(name, path, sep, rep)
 		end
 	end
 end
+ Kocos = {}
 
-function dofile(filename, ...)
-	return assert(loadfile(filename))(...)
-end
+_KVERSION = "Kocos v0.-1.1"
+_OSVERSION = _OSVERSION or "Unknown KOCOS"
 
-function loadfile(filename, mode, env)
-	local code, err = readfile(filename)
-	if not code then return nil, err end
-	if code:sub(1,2) == "#!" then
-		-- shebang!
-		local ln = string.find(code, "\n") or #code
-		code = code:sub(ln+1)
+local argv = {...}
+
+---@alias Kocos.device {address: string, type: string, slot: integer}|table
+
+Kocos.biotBootTime = computer.uptime()
+
+---@type table<string, string>
+Kocos.cmdline = {}
+
+---@type string?
+Kocos.ramfs = nil
+
+---@param cmdline string
+---@return table<string, string>
+function Kocos.parseCmdline(cmdline)
+	if cmdline == "" then return {} end
+	local parts = string.split(cmdline, "\t")
+	local t = {}
+
+	for _, part in ipairs(parts) do
+		local eql = string.find(part, "=")
+		assert(eql, "malformed cmdline")
+		local name, val = string.sub(part, 1, eql-1), string.sub(part, eql+1)
+		t[name] = val
 	end
-	return load(code, "=" .. filename, mode, env)
+
+	return t
 end
 
----@param bufsize? integer
----@return string?, string?
-function readfile(filename, bufsize)
-	local fd, err = syscall("open", filename, "r")
-	if err then return nil, err end
+---@param cmdline table<string, string>
+---@return string
+function Kocos.encodeCmdline(cmdline)
+	local pairs = {}
+	for k, v in pairs(cmdline) do
+		table.insert(pairs, k .. "=" .. v)
+	end
+	return table.concat(pairs, "\t")
+end
 
-	local code = {}
-	while true do
-		local data, err2 = syscall("read", fd, bufsize or math.huge)
-		if err2 then
-			syscall("close", fd)
-			return nil, err2
+---@param name string
+---@param default boolean
+---@return boolean
+function Kocos.getCmdlineBool(name, default)
+	if Kocos.cmdline[name] == nil then return default end
+	return Kocos.cmdline[name] == "true"
+end
+
+---@param name string
+---@param default number
+---@return number
+function Kocos.getCmdlineNum(name, default)
+	return tonumber(Kocos.cmdline[name]) or default
+end
+
+---@param name string
+---@param default string
+---@return string
+function Kocos.getCmdlineStr(name, default)
+	return Kocos.cmdline[name] or default
+end
+
+if argv[1] == "kocos" then
+	Kocos.cmdline = Kocos.parseCmdline(argv[2] or "")
+	Kocos.ramfs = argv[3]
+elseif not argv[1] then
+	-- generic boot protocol
+else
+	error("Unknown boot protocol")
+end
+
+Kocos.disableScreen = Kocos.getCmdlineBool("NO_SCR", false)
+Kocos.disableDefaultPanicHandler = Kocos.getCmdlineBool("CUSTOM_PANIC", false)
+
+Kocos.L_DEBUG = 0
+Kocos.L_INFO = 1
+Kocos.L_AUTOFIX = 2
+Kocos.L_WARN = 3
+Kocos.L_ERROR = 4
+Kocos.L_PANIC = 5
+Kocos.L_RAWTEXT = 6
+
+Kocos.minLog = Kocos.getCmdlineNum("MIN_LOG", 0)
+
+local oc = component.list("ocelot")()
+local serial = component.list("serial")()
+
+local gpu, screen = component.list("gpu")(), component.list("screen")()
+if gpu and screen then
+	component.invoke(gpu, "bind", screen)
+end
+local currentY = 0
+
+function Kocos.clearscr()
+	if not gpu then return end
+	local w, h = component.invoke(gpu, "getResolution")
+	component.invoke(gpu, "fill", 1, 1, w, h, " ")
+	gpu = nil
+	screen = nil
+end
+
+function Kocos.setprintcolor(clr)
+	if gpu then
+		component.invoke(gpu, "setForeground", clr)
+	end
+end
+
+function Kocos.printk(severity, msg)
+	local uptime = computer.uptime()
+
+	if Kocos.notifyListeners then Kocos.notifyListeners("kocos_log", uptime, severity, msg) end
+
+	if severity < Kocos.minLog then return end
+
+	local names = {
+		[Kocos.L_DEBUG] = "DEBUG",
+		[Kocos.L_INFO] = "INFO",
+		[Kocos.L_AUTOFIX] = "AUTOFIX",
+		[Kocos.L_WARN] = "WARN",
+		[Kocos.L_ERROR] = "ERROR",
+		[Kocos.L_PANIC] = "PANIC",
+	}
+
+	local rawText = severity == Kocos.L_RAWTEXT and msg or string.format("[%5.3f %s] %s", uptime, names[severity] or "UNKNOWN", msg)
+	if oc then
+		component.invoke(oc, "log", rawText)
+	end
+	if serial then
+		component.invoke(serial, "write", rawText .. "\n")
+	end
+	if gpu and screen and not Kocos.disableScreen then
+		local w, h = component.invoke(gpu, "getResolution")
+
+		currentY = currentY + 1
+		while currentY >= h do
+			component.invoke(gpu, "copy", 1, 1, w, h-1, 0, -1)
+			currentY = currentY - 1
+			component.invoke(gpu, "fill", 1, currentY, w, 1, " ")
 		end
-		if not data then break end
-		table.insert(code, data)
+		component.invoke(gpu, "set", 1, currentY, rawText)
 	end
 
-	syscall("close", fd)
-	return table.concat(code)
+	if severity == Kocos.L_PANIC then
+		if Kocos.disableDefaultPanicHandler and Kocos.notifyListeners then
+			Kocos.notifyListeners("kocos_panic", uptime, msg)
+			return
+		end
+		Kocos.pull(5)
+		computer.shutdown(true)
+	end
 end
 
----@param data string
----@return boolean, string?
-function writefile(filename, data)
-	local fd, err = syscall("open", filename, "w")
-	if not fd then return false, err end
-
-	local ok, err2 = syscall("write", fd, data)
-	syscall("close", fd)
-	return ok, err2
+function Kocos.printkf(severity, fmt, ...)
+	Kocos.printk(severity, string.format(fmt, ...))
 end
- --- Non-buffered event stream
---- Use listeners to ensure all events are processed and none are skipped
---- Based off OpenOS' event library, but with many subtle differences
 
-Kocos.event = {}
+function Kocos.panick(msg)
+	Kocos.printk(Kocos.L_PANIC, msg)
+end
 
----@type function[]
-Kocos.event.listeners = {}
+function Kocos.panickf(fmt, ...)
+	Kocos.panick(string.format(fmt, ...))
+end
+
+Kocos.printk(Kocos.L_INFO, "Initializing...")
+
+package.path = Kocos.getCmdlineStr("LD_PATH", package.path)
+package.cpath = Kocos.getCmdlineStr("LD_CPATH", package.cpath)
+
+Kocos.printkf(Kocos.L_DEBUG, "package.path: %s", package.path)
+Kocos.printkf(Kocos.L_DEBUG, "package.cpath: %s", package.cpath)
+
+---@diagnostic disable:lowercase-global
+---@type table<string, function>
+syscalls = {} -- syscalls defined later in other files
+
+Kocos.execDeadline = math.huge
+
+---@diagnostic disable: lowercase-global
+---@param sysname string
+---@return ...
+function syscall(sysname, ...)
+	-- TODO: syscall impl
+	local proc = Kocos.currentProcess()
+	if proc.state == "dead" then Kocos.sysyield() end
+
+	local now = computer.uptime()
+	if now > Kocos.execDeadline then Kocos.sysyield() end
+
+	if proc.debugger then
+		Kocos.sendSignal(proc.debugger, "SYSCALL", sysname, {...})
+	end
+
+	local sysfunc = syscalls[sysname]
+	if not sysfunc then return nil, Kocos.ESRCH end
+
+	local t = {pcall(sysfunc, ...)}
+
+	if proc.debugger then
+		Kocos.sendSignal(proc.debugger, "SYSRET", sysname, {...}, t)
+	end
+
+	if t[1] then
+		return table.unpack(t, 2)
+	end
+	return nil, t[2]
+end
+
+function syscalls.syscalls()
+	local t = {}
+	for k in pairs(syscalls) do table.insert(t, k) end
+	return t
+end
+
+-- file descriptor system
+
+Kocos.O_NONBLOCK = 1
+Kocos.O_CLOEXEC = 2
+
+---@alias Kocos.descriptorReq "close"|"read"|"write"|"seek"|"accept"|"connect"|"listen"|"ioctl"
+
+---@alias Kocos.descriptorEv "data_recv"|"data_written"|"connected"|"closed"|"accepting"
+
+---@class Kocos.fileListener
+---@field pid integer
+---@field callback fun(ev: Kocos.descriptorEv, ...)
+
+---@class Kocos.descriptor
+---@field type "file"|"pipe"|"device"|"socket"
+---@field state string
+---@field rc integer
+---@field flags integer
+---@field pid integer
+---@field handler fun(desc: Kocos.descriptor, ev: Kocos.descriptorReq, ...): ...
+---@field evbuf? table[]
+---@field listener? Kocos.fileListener
+
+Kocos.MAX_HEVBUF = Kocos.getCmdlineNum("MAX_HEVBUF", 8)
+
+---@param fd Kocos.descriptor
+---@param ev Kocos.descriptorEv
+function Kocos.notifyDescriptor(fd, ev, ...)
+	if not fd.listener then
+		fd.evbuf = fd.evbuf or {}
+		table.insert(fd.evbuf, {ev, ...})
+		while #fd.evbuf > Kocos.MAX_HEVBUF do table.remove(fd.evbuf, 1) end
+		return
+	end
+
+	local proc = Kocos.processes[fd.listener.pid]
+	if not proc then return end -- no one to notify
+
+	Kocos.procCall(proc, fd.listener.callback, ev, ...)
+end
+
+---@param listener? Kocos.fileListener
+function Kocos.setDescriptorListener(fd, listener)
+	if listener and fd.evbuf then
+		local proc = Kocos.processes[listener.pid]
+		for _, ev in ipairs(fd.evbuf) do
+			Kocos.procCall(proc, listener.callback, table.unpack(ev))
+		end
+		fd.evbuf = nil
+	end
+	fd.listener = listener
+end
+
+---@param fd Kocos.descriptor
+---@param req Kocos.descriptorReq
+---@return ...
+function Kocos.handleDescriptorRequest(fd, req, ...)
+	local proc = Kocos.processes[fd.pid]
+	if not proc then return end
+	local t = Kocos.procCall(proc, fd.handler, fd, req, ...)
+	if t[1] then
+		return table.unpack(t, 2)
+	else
+		return nil, tostring(t[2])
+	end
+end
+
+---@param fd Kocos.descriptor
+function Kocos.closeDescriptor(fd)
+	fd.rc = fd.rc - 1
+	if fd.rc > 0 then return end
+	return Kocos.handleDescriptorRequest(fd, "close")
+end
+ ---@type function[]
+Kocos.listeners = {}
+
 ---@type table<integer, {times: integer, interval: number, deadline: number, func: function}>
-Kocos.event.timers = {}
-Kocos.event.nextTimer = 0
+Kocos.timers = {}
+local nextTimer = 0
 
-function Kocos.event.notifyListeners(...)
+function Kocos.notifyListeners(...)
 	if select("#", ...) == 0 then return end
-	for _, func in ipairs(Kocos.event.listeners) do
+	for _, func in ipairs(Kocos.listeners) do
 		local ok, err = xpcall(func, debug.traceback, ...)
 		if not ok then
-			Kocos.printkf(Kocos.L_ERROR, "Signal handler error: %s", err)
+			Kocos.printkf(Kocos.L_ERROR, "Event handler error: %s", err)
 		end
 	end
 end
 
-function Kocos.event.listen(func)
-	table.insert(Kocos.event.listeners, func)
+function Kocos.listen(func)
+	table.insert(Kocos.listeners, func)
 end
 
-function Kocos.event.forget(func)
-	for i=#Kocos.event.listeners, 1, -1 do
-		if Kocos.event.listeners[i] == func then
-			table.remove(Kocos.event.listeners, i)
+function Kocos.forget(func)
+	for i=#Kocos.listeners, 1, -1 do
+		if Kocos.listeners[i] == func then
+			table.remove(Kocos.listeners, i)
 		end
 	end
 end
 
-function Kocos.event.processTimers()
+function Kocos.processTimers()
 	local toCancel = {}
 
-	for id, timer in pairs(Kocos.event.timers) do
+	for id, timer in pairs(Kocos.timers) do
 		local now = computer.uptime()
 		if timer.deadline <= now then
 			timer.times = timer.times - 1
@@ -504,28 +689,28 @@ function Kocos.event.processTimers()
 		end
 	end
 
-	for _, id in ipairs(toCancel) do Kocos.event.cancel(id) end
+	for _, id in ipairs(toCancel) do Kocos.cancelTimer(id) end
 end
 
-function Kocos.event.minTimeTilNextTimer(timeleft)
-	for _, timer in pairs(Kocos.event.timers) do
+function Kocos.minTimeTilNextTimer(timeleft)
+	for _, timer in pairs(Kocos.timers) do
 		local timerleft = timer.deadline - computer.uptime()
 		timeleft = math.min(timeleft, timerleft)
 	end
-	return math.max(timeleft, Kocos.args.minEventPoll or 0)
+	return math.max(timeleft, Kocos.getCmdlineNum("MIN_POLL", 0.05))
 end
 
 ---@param interval number
 ---@param func function
 ---@param times? integer
-function Kocos.event.timer(interval, func, times)
+function Kocos.timer(interval, func, times)
 	times = times or 1
 
-	local id = Kocos.event.nextTimer
+	local id = nextTimer
 	-- just in case
-	while Kocos.event.timers[id] do id = id + 1 end
-	Kocos.event.nextTimer = id + 1
-	Kocos.event.timers[id] = {
+	while Kocos.timers[id] do id = id + 1 end
+	nextTimer = id + 1
+	Kocos.timers[id] = {
 		interval = interval,
 		func = func,
 		times = times,
@@ -534,22 +719,22 @@ function Kocos.event.timer(interval, func, times)
 	return id
 end
 
-function Kocos.event.cancel(id)
-	Kocos.event.timers[id] = nil
+function Kocos.cancelTimer(id)
+	Kocos.timers[id] = nil
 end
 
 ---@param timeout? number
-function Kocos.event.pull(timeout)
-	timeout = timeout or (Kocos.args.pollInterval or 0)
+function Kocos.pull(timeout)
+	timeout = timeout or Kocos.getCmdlineNum("POLL_INT", 0)
 	local deadline = computer.uptime() + timeout
 
 	while true do
 		local now = computer.uptime()
-		local timeleft = Kocos.event.minTimeTilNextTimer(deadline - now)
+		local timeleft = Kocos.minTimeTilNextTimer(deadline - now)
 		local s = {computer.pullSignal(timeleft)}
-		Kocos.event.processTimers()
+		Kocos.processTimers()
 		if s[1] then
-			Kocos.event.notifyListeners(table.unpack(s))
+			Kocos.notifyListeners(table.unpack(s))
 			return table.unpack(s)
 		end
 		if now > deadline then return end
@@ -557,7 +742,7 @@ function Kocos.event.pull(timeout)
 end
 
 ---@type fun(ev: string, ...)
-Kocos.event.push = computer.pushSignal
+Kocos.push = computer.pushSignal
  -- virtual components
 
 do
@@ -816,3822 +1001,521 @@ function component.hasPrimary(type)
 	return component.getPrimary(type) ~= nil
 end
 
-Kocos.event.listen(component._defaultHandler)
- Kocos.L_DEBUG = 0
-Kocos.L_INFO = 1
-Kocos.L_AUTOFIX = 2
-Kocos.L_WARN = 3
-Kocos.L_ERROR = 4
-Kocos.L_PANIC = 5
-Kocos.L_RAWTEXT = 6
+Kocos.listen(component._defaultHandler)
+ Kocos.E2BIG = "too many arguments"
+Kocos.EACCESS = "permission denied"
+Kocos.EAGAIN = "resource temporarily unavailable"
+Kocos.EBADF = "bad file descriptor"
+Kocos.EBADMSG = "bad message"
+Kocos.ECHILD = "no child processes"
+Kocos.EEXIST = "file exists"
+Kocos.EFBIG = "file too large"
+Kocos.EHWPOISON = "critical driver error"
+Kocos.EINVAL = "invalid argument"
+Kocos.EIO = "I/O error"
+Kocos.EISDIR = "is a directory"
+Kocos.ELIBACC = "cannot access shared library"
+Kocos.ELIBBAD = "invalid shared library"
+Kocos.ELIBEXEC = "cannot exec a shared library"
+Kocos.ELOOP = "too many symbolic links"
+Kocos.ENAMETOOLONG = "name too long"
+Kocos.ENODEV = "no such device"
+Kocos.ENOENT = "no such file or directory"
+Kocos.ENOEXEC = "exec format error"
+Kocos.ENOSYS = "invalid syscall"
+Kocos.ENOTBLK = "block device required"
+Kocos.ENOTDIR = "not a directory"
+Kocos.ENOTEMPTY = "directory not empty"
+Kocos.ENOTSOCK = "not a socket"
+Kocos.EPERM = "operation not permitted"
+Kocos.EPIPE = "broken pipe"
+Kocos.EPROTO = "protocol error"
+Kocos.EPROTONOSUPPORT = "protocol not supported"
+Kocos.EPROTOTYPE = "protocol wrong type for socket"
+Kocos.ERESTART = "syscall requires restart"
+Kocos.ESPIPE = "invalid seek"
+Kocos.ESRCH = "no such process"
+Kocos.ESTRPIPE = "streams pipe error"
+Kocos.ETIME = "timer expired"
+Kocos.EUNATCH = "driver not attached"
+Kocos.ENODRIVER = Kocos.EUNATCH
+Kocos.ETIMEDOUT = "connection timed out"
+Kocos.EROFS = "read-only filesystem"
+Kocos.ENETDOWN = "network is down"
+Kocos.EISCONN = "socket is connected"
+Kocos.ECANCELED = "operation cancelled"
+Kocos.EALREADY = "connection already in progress"
+Kocos.EADDRINUSE = "address already in use"
+Kocos.EADDRNOTAVAIL = "address not available"
+Kocos.EAFNOSUPPORT = "address family not supported"
+Kocos.EXDEV = "invalid cross-device link"
+Kocos.EHOSTISDOWN = "host is unreachable"
 
-local oc = component.list("ocelot")()
-local serial = component.list("serial")()
-
-local gpu, screen = component.list("gpu")(), component.list("screen")()
-if gpu and screen then
-	component.invoke(gpu, "bind", screen)
-end
-local currentY = 0
-
-function Kocos.clearscr()
-	if not gpu then return end
-	local w, h = component.invoke(gpu, "getResolution")
-	component.invoke(gpu, "fill", 1, 1, w, h, " ")
-	gpu = nil
-	screen = nil
-end
-
-function Kocos.setprintcolor(clr)
-	if gpu then
-		component.invoke(gpu, "setForeground", clr)
-	end
-end
-
-function Kocos.printk(severity, msg)
-	local uptime = computer.uptime()
-
-	Kocos.event.notifyListeners("kocos_log", uptime, severity, msg)
-
-	if Kocos.args.minLog then
-		if severity < Kocos.args.minLog then return end
-	end
-
-	local names = {
-		[Kocos.L_DEBUG] = "DEBUG",
-		[Kocos.L_INFO] = "INFO",
-		[Kocos.L_AUTOFIX] = "AUTOFIX",
-		[Kocos.L_WARN] = "WARN",
-		[Kocos.L_ERROR] = "ERROR",
-		[Kocos.L_PANIC] = "PANIC",
-	}
-
-	local rawText = severity == Kocos.L_RAWTEXT and msg or string.format("[%5.3f %s] %s", uptime, names[severity] or "UNKNOWN", msg)
-	if oc then
-		component.invoke(oc, "log", rawText)
-	end
-	if serial then
-		component.invoke(serial, "write", rawText .. "\n")
-	end
-	if gpu and screen and not Kocos.disableScreen then
-		local w, h = component.invoke(gpu, "getResolution")
-
-		currentY = currentY + 1
-		while currentY >= h do
-			component.invoke(gpu, "copy", 1, 1, w, h-1, 0, -1)
-			component.invoke(gpu, "fill", 1, currentY, w, 1, " ")
-			currentY = currentY - 1
-		end
-		component.invoke(gpu, "set", 1, currentY, rawText)
-	end
-
-	if severity == Kocos.L_PANIC then
-		if Kocos.disableDefaultPanicHandler then
-			Kocos.event.notifyListeners("kocos_panic", uptime, msg)
-			return
-		end
-		pcall(Kocos.event.pull, 5)
-		computer.shutdown(true)
-	end
-end
-
-function Kocos.printkf(severity, fmt, ...)
-	Kocos.printk(severity, string.format(fmt, ...))
-end
-
-function Kocos.panick(msg)
-	Kocos.printk(Kocos.L_PANIC, msg)
-end
-
-function Kocos.panickf(fmt, ...)
-	Kocos.panick(string.format(fmt, ...))
-end
-
-Kocos.printk(Kocos.L_DEBUG, "printk loaded")
- local errno = {}
-
-errno.E2BIG = "too many arguments"
-errno.EACCESS = "permission denied"
-errno.EAGAIN = "resource temporarily unavailable"
-errno.EBADF = "bad file descriptor"
-errno.EBADMSG = "bad message"
-errno.ECHILD = "no child processes"
-errno.EEXIST = "file exists"
-errno.EFBIG = "file too large"
-errno.EHWPOISON = "critical driver error"
-errno.EINVAL = "invalid argument"
-errno.EIO = "I/O error"
-errno.EISDIR = "is a directory"
-errno.ELIBACC = "cannot access shared library"
-errno.ELIBBAD = "invalid shared library"
-errno.ELIBEXEC = "cannot exec a shared library"
-errno.ELOOP = "too many symbolic links"
-errno.ENAMETOOLONG = "name too long"
-errno.ENODEV = "no such device"
-errno.ENOENT = "no such file or directory"
-errno.ENOEXEC = "exec format error"
-errno.ENOSYS = "invalid syscall"
-errno.ENOTBLK = "block device required"
-errno.ENOTDIR = "not a directory"
-errno.ENOTEMPTY = "directory not empty"
-errno.ENOTSOCK = "not a socket"
-errno.EPERM = "operation not permitted"
-errno.EPIPE = "broken pipe"
-errno.EPROTO = "protocol error"
-errno.EPROTONOSUPPORT = "protocol not supported"
-errno.EPROTOTYPE = "protocol wrong type for socket"
-errno.ERESTART = "syscall requires restart"
-errno.ESPIPE = "invalid seek"
-errno.ESRCH = "no such process"
-errno.ESTRPIPE = "streams pipe error"
-errno.ETIME = "timer expired"
-errno.EUNATCH = "driver not attached"
-errno.ENODRIVER = errno.EUNATCH
-errno.ETIMEDOUT = "connection timed out"
-errno.EROFS = "read-only filesystem"
-errno.ENETDOWN = "network is down"
-errno.EISCONN = "socket is connected"
-errno.ECANCELED = "operation cancelled"
-errno.EALREADY = "connection already in progress"
-errno.EADDRINUSE = "address already in use"
-errno.EADDRNOTAVAIL = "address not available"
-errno.EAFNOSUPPORT = "address family not supported"
-errno.EXDEV = "invalid cross-device link"
-errno.EHOSTISDOWN = "host is unreachable"
-
-Kocos.errno = errno
- -- KOCOS drivers are simple functions
--- They are effectively request handlers
--- This is to minimize memory usage
-
----@type function[]
-Kocos.drivers = {}
-
-function Kocos.addDriver(driver)
-	table.insert(Kocos.drivers, 1, driver)
-	Kocos.event.notifyListeners("driver_added", driver)
-end
-
-function Kocos.removeDriver(driver)
-	for i=#Kocos.drivers,1, -1 do
-		if Kocos.drivers[i] == driver then
-			table.remove(Kocos.drivers, i)
+---@return table<string, string>
+function syscalls.errnos()
+	local errnos = {}
+	for k, v in pairs(Kocos) do
+		if type(k) == "string" and k == string.upper(k) and string.sub(k, 1, 1) == "E" and type(v) == "string" then
+			errnos[k] = v
 		end
 	end
-	Kocos.event.notifyListeners("driver_removed", driver)
+	return errnos
+end
+ ---@alias Kocos.module fun(req: string, ...): ...
+
+---@type table<string, Kocos.module>
+Kocos.mods = {}
+
+---@param mod string
+function Kocos.hasModule(mod)
+	return Kocos.mods[mod] ~= nil
 end
 
-Kocos.printk(Kocos.L_DEBUG, "driver system loaded")
- do
-	Kocos.printk(Kocos.L_DEBUG, "debugger subsystem loaded")
+---@return boolean, string?
+function Kocos.loadModule(mod, code, chunkname)
+	-- remove old one
+	Kocos.removeModule(mod)
 
-	local event = Kocos.event
+	local f, err = load(code, chunkname, nil, _G)
+	if not f then return false, err end
 
-	---@param resp string
-	local function respond(resp)
-		event.push("kgdb_resp", resp)
+	local ok, handler = pcall(f)
+	if not ok then return false, handler end
+	if type(handler) ~= "function" then return false, Kocos.EINVAL end
+	Kocos.mods[code] = handler
+	return true
+end
+
+function Kocos.removeModule(mod)
+	local old = Kocos.mods[mod]
+	if old then
+		old("dkms_close")
 	end
-
-	---@param fmt string
-	local function respondf(fmt, ...)
-		respond(string.format(fmt, ...))
-	end
-
-	---@type {args: any[], rets?: any[], bt: string, last: table?}?
-	_BreakInfo = nil
-
-	function _WRAP_BREAKPOINT(f, name)
-		if type(f) == "table" then
-			return f.func
-		else
-			return setmetatable({
-				func = f,
-			}, {
-				__tostring = function() return tostring(f) end,
-				__call = function(t, ...)
-					_BreakInfo = {args = {...}, bt = debug.traceback(name), last = _BreakInfo}
-					respondf("Hit breakpoint %s", name or "unnamed")
-					while true do
-						local e = Kocos.event.pull(math.huge)
-						if e == "kgdb_go" then
-							break
-						end
-					end
-					local ret = {f(...)}
-					_BreakInfo.rets = ret
-					while true do
-						local e = Kocos.event.pull(math.huge)
-						if e == "kgdb_go" then
-							_BreakInfo = _BreakInfo.last
-							break
-						end
-					end
-					respondf("Breakpoint %s over", name or "unnamed")
-					return table.unpack(ret)
-				end,
-			})
-		end
-	end
-
-	---@param ev string
-	---@param command string
-	event.listen(function(ev, command)
-		if ev ~= "kgdb_msg" then return end
-		if command == "h" then
-			respond([[
-h - Display this help page
-l <code> - Run Lua code as a statement
-x <code> - Run Lua code as an expression (or comma-separated series of expressions) and display results
-r - Reboot
-R - Shutdown
-m - View memory usage
-e - View battery status
-c - List known device hardware
-c <filter> - Like c, except using a fuzzy match identical to component.list()
-bp <expression> - Wrap a function to trigger a breakpoint. This will replace the function with a table with the __call metamethod.
-bt - Print the backtrace saved from the latest breakpoint
-ba - Print the arguments saved from the latest breakpoint
-br - Print the returns saved from the latest breakpoint
-g - Go, aka, run past breakpoint
-gc - Go, but only past the call. Still break on return. br will print the returns
-]])
-			return
-		end
-		if command:sub(1, 3) == "bp " then
-			local name = command:sub(4)
-			local expr = string.format("%s = _WRAP_BREAKPOINT(%s, %q)", name, name, name)
-			local f, err = load(expr, "=bp")
-			if not f then
-				respondf("Error: %s", err)
-				return
-			end
-			local ok, err2 = xpcall(f, debug.traceback)
-			if err then
-				respondf("Error: %s", err2)
-				return
-			end
-			respondf("Toggled breakpoint %s", name)
-			return
-		end
-		if command == "gc" then
-			if _BreakInfo.rets then return respond("Call already resumed") end
-			Kocos.event.push("kgdb_go")
-			return respond("Call skipped")
-		end
-		if command == "g" then
-			if not _BreakInfo.rets then Kocos.event.push("kgdb_go") end
-			Kocos.event.push("kgdb_go")
-			return
-		end
-		if command == "bt" then
-			if _BreakInfo then
-				return respond(_BreakInfo.bt)
-			else
-				return respond("No backtrace")
-			end
-		end
-		if command == "ba" then
-			if not _BreakInfo then return respond("No breakpoint info") end
-			local t = {}
-			for i=1,#_BreakInfo.args do t[i] = table.serialize(_BreakInfo.args[i]) end
-			return respond(table.concat(t, ", "))
-		end
-		if command == "br" then
-			if not _BreakInfo then return respond("No breakpoint info") end
-			if not _BreakInfo.rets then return respond("Call still suspended") end
-			local t = {}
-			for i=1,#_BreakInfo.rets do t[i] = table.serialize(_BreakInfo.rets[i]) end
-			return respond(table.concat(t, ", "))
-		end
-		if command == "c" or command:sub(1, 2) == "c " then
-			local filter = nil
-			if command:sub(1, 2) == "c " then
-				filter = command:sub(3)
-			end
-			local buf = {}
-			for addr, type in component.list(filter) do
-				table.insert(buf, addr .. " = " .. type)
-			end
-			respond(table.concat(buf, "\n"))
-			return
-		end
-		if command == "m" then
-			local total = computer.totalMemory()
-			local free = computer.freeMemory()
-			local used = total - free
-			respondf(
-				"Total: %s\nUsed: %s (%3.2f%%)\nFree: %s (%3.2f%%)\n",
-				string.memformat(total),
-				string.memformat(used),
-				used / total * 100,
-				string.memformat(free),
-				free / total * 100
-			)
-			return
-		end
-		if command == "e" then
-			local total = computer.maxEnergy()
-			local remaining = computer.energy()
-			respondf("Energy: %d FE / %d FE (%3.2f%%)", remaining, total, remaining / total * 100)
-			return
-		end
-		if command == "r" then
-			respond("Rebooting...")
-			Kocos.poweroff(true)
-			return
-		end
-		if command == "R" then
-			respond("Shutting down...")
-			Kocos.poweroff(false)
-			return
-		end
-		if command:sub(1, 2) == "l " then
-			local code = command:sub(3)
-			local f, err = load(code, "=kgdb")
-			if not f then
-				respondf("Error: %s", err)
-				return
-			end
-			local ok, err2 = xpcall(f, debug.traceback)
-			if not ok then
-				respondf("Error: %s", err2)
-				return
-			end
-			respondf("OK")
-			return
-		end
-		if command == "nproc" then
-			local nproc = 0
-			for pid in pairs(Kocos.process.allProcs) do
-				nproc = nproc + 1
-			end
-			return respond(tostring(nproc))
-		end
-		if command == "pids" then
-			local pids = {}
-			for pid in pairs(Kocos.process.allProcs) do
-				table.insert(pids, pid)
-			end
-			return respond(table.concat(pids, " "))
-		end
-		if command:sub(1, 2) == "x " then
-			local code = command:sub(3)
-			local f, err = load("return " .. code, "=kgdb")
-			if not f then
-				respondf("Error: %s", err)
-				return
-			end
-			local t = {xpcall(f, debug.traceback)}
-			if not t[1] then
-				respondf("Error: %s", t[2])
-				return
-			end
-			local strs = {}
-			for i=2,#t do strs[i-1] = table.serialize(t[i]) end
-			if #strs == 0 then strs={"nil"} end
-			respond(table.concat(strs, ", "))
-			return
-		end
-	end)
-
-	local kgdb = Kocos.args.debugger
-
-	if kgdb then
-		local kgdbType = component.type(kgdb) or "unknown"
-		Kocos.printk(Kocos.L_DEBUG, "Using debugger: " .. kgdb .. " (" .. kgdbType .. ")")
-		if kgdbType == "ocelot" then
-			event.listen(function(ev, hw, msg)
-				if ev == "ocelot_message" and hw == kgdb then
-					event.push("kgdb_msg", msg)
-				end
-				if ev == "kgdb_resp" then
-					component.invoke(kgdb, "log", "[KGDB] " .. hw)
-				end
-			end)
-		elseif kgdbType == "tunnel" then
-			-- TODO: kgdb over tunnels
-		elseif kgdbType == "modem" then
-			-- TODO: kgdb over modems
-		end
-
-		respond("debugger connection established")
-	else
-		Kocos.printk(Kocos.L_DEBUG, "No debugger selected")
-	end
+	Kocos.mods[mod] = nil
 end
- do
+ local sysyieldobj = {}
 
----@class Kocos.ramfs.node
----@field fileData string?
----@field items table<string, Kocos.ramfs.node>?
-
----@class Kocos.ramfs.file
----@field mode "r"|"w"|"a"
----@field offset integer
----@field node Kocos.ramfs.node
-
----@class Kocos.ramfs
----@field label string?
----@field readonly boolean
----@field fds table<integer, Kocos.ramfs.file>
----@field image Kocos.ramfs.node
-
----@param ramfs Kocos.ramfs
----@param path string[]
----@return Kocos.ramfs.node?
-local function processPathParts(ramfs, path)
-	local node = ramfs.image
-	while #path > 0 do
-		local name = table.remove(path, 1)
-		if not node.items then return end
-		node = node.items[name]
-		if not node then return end
-	end
-	return node
+function Kocos.sysyield()
+	coroutine.yield(sysyieldobj)
 end
 
----@param ramfs Kocos.ramfs
----@param path string
----@return Kocos.ramfs.node?
-local function processPath(ramfs, path)
-	local s = string.split(Kocos.fs.canonical(path):sub(2), "/")
-	return processPathParts(ramfs, s)
-end
+Kocos.resume = coroutine.resume
 
----@param ramfs Kocos.ramfs
----@param path string
----@return Kocos.ramfs.node?, string
-local function processParentPath(ramfs, path)
-	local s = string.split(Kocos.fs.canonical(path):sub(2), "/")
-	local name = s[#s]
-	s[#s] = nil
-	return processPathParts(ramfs, s), name
-end
-
----@param ramfs Kocos.ramfs
----@param address? string
-function Kocos.addRamfsComponent(ramfs, address)
-	address = address or string.randomGUID()
-	return component.add {
-		address = address,
-		type = "filesystem",
-		slot = -1,
-		methods = {
-			spaceUsed = {direct = true},
-			spaceTotal = {direct = true},
-			getLabel = {direct = true},
-			setLabel = {direct = true},
-			exists = {direct = true},
-			size = {direct = true},
-			list = {direct = true},
-			isDirectory = {direct = true},
-			isReadOnly = {direct = true},
-			lastModified = {direct = true},
-			makeDirectory = {direct = true},
-			open = {direct = true},
-			write = {direct = true},
-			read = {direct = true},
-			seek = {direct = true},
-			close = {direct = true},
-			remove = {direct = true},
-			rename = {direct = true},
-		},
-		invoke = function(method, ...)
-			if method == "spaceUsed" then
-				return computer.totalMemory() - computer.freeMemory()
-			end
-			if method == "spaceTotal" then
-				return computer.totalMemory()
-			end
-			if method == "getLabel" then
-				return ramfs.label
-			end
-			if method == "setLabel" then
-				ramfs.label = tostring((...))
-				return ramfs.label
-			end
-			if method == "exists" then
-				local p = ...
-				if p == "" then return true end
-				return processPath(ramfs, p) ~= nil
-			end
-			if method == "size" then
-				local p = ...
-				if p == "" then return 0 end
-				local node = processPath(ramfs, p)
-				if not node then return 0 end
-				if not node.fileData then return 0 end
-				return #node.fileData
-			end
-			if method == "list" then
-				local p = ...
-				local node = p == "" and ramfs.image or processPath(ramfs, p)
-				if not node then return nil, "no such file" end
-				if not node.items then return end
-				local items = {}
-				for name, child in pairs(node.items) do
-					if child.items then
-						table.insert(items, name .. "/")
-					else
-						table.insert(items, name)
-					end
-				end
-				return items
-			end
-			if method == "isDirectory" then
-				local p = ...
-				if p == "" then return true end
-				local node = processPath(ramfs, p)
-				if not node then return false end
-				return node.items ~= nil
-			end
-			if method == "isReadOnly" then
-				return ramfs.readonly
-			end
-			if method == "lastModified" then return 0 end
-			if method == "makeDirectory" then
-				local p = ...
-				local parent, name = processParentPath(ramfs, p)
-				if not parent then
-					return false, p
-				end
-				if not parent.items then
-					return false, p
-				end
-				parent.items[name] = parent.items[name] or {items={}}
-				return true
-			end
-			if method == "open" then
-				local p, m = ...
-				m = m or "r"
-				if ramfs.readonly and m ~= "r" then
-					return nil, "readonly"
-				end
-				local n = processPath(ramfs, p)
-				if m == "r" and not n then return nil, p end
-				if not n then
-					if ramfs.readonly then
-						return nil, "readonly"
-					end
-					n = {
-						fileData = "",
-					}
-					local parent, name = processParentPath(ramfs, p)
-					if not parent then
-						return nil, p
-					end
-					if not parent.items then
-						return nil, p
-					end
-					parent.items[name] = n
-				end
-				if not n.fileData then return nil, "is a directory" end
-				local fd = #ramfs.fds+1
-				ramfs.fds[fd] = {
-					mode = m,
-					offset = m == "a" and #n.fileData or 0,
-					node = n,
-				}
-				if m == "w" then
-					n.fileData = ""
-				end
-				return fd
-			end
-			if method == "write" then
-				local fd, data = ...
-				local f = ramfs.fds[fd]
-				if not f then return false, "bad file" end
-				if f.mode == "r" then return false, "bad file" end
-				local buf = f.node.fileData or ""
-				if f.mode == "a" then f.offset = #buf end
-				buf = buf:sub(1, f.offset) .. data .. buf:sub(f.offset+#data)
-				f.node.fileData = buf
-				f.offset = f.offset + #data
-				return true
-			end
-			if method == "seek" then
-				local fd, whence, off = ...
-				whence = whence or "cur"
-				off = 0
-				off = math.floor(off)
-				local f = ramfs.fds[fd]
-				if not f then return false, "bad file" end
-				local len = #f.node.fileData
-				if whence == "set" then
-					f.offset = off
-				elseif whence == "cur" then
-					f.offset = f.offset + off
-				elseif whence == "end" then
-					f.offset = len - f.offset
-				end
-				f.offset = math.clamp(f.offset, 0, len)
-				return f.offset
-			end
-			if method == "read" then
-				local fd, len = ...
-				local f = ramfs.fds[fd]
-				if not f then return nil, "bad file" end
-				if f.mode ~= "r" then return nil, "bad file" end
-				local buf = f.node.fileData or ""
-				len = len or #buf
-				len = math.min(len, #buf - f.offset)
-				if f.offset >= #buf then
-					return
-				end
-				local chunk = buf:sub(f.offset+1, f.offset+len)
-				f.offset = f.offset + #chunk
-				return chunk
-			end
-			if method == "close" then
-				ramfs.fds[(...)] = nil
-				return
-			end
-			if method == "remove" then
-				local p = ...
-				local parent, name = processParentPath(ramfs, p)
-				if not parent then return false, p end
-				if parent.items[name] then
-					parent.items[name] = nil
-				end
-				return true
-			end
-			if method == "rename" then
-				return false, "unsupported"
-			end
-		end,
-	}
-end
-
-end
- local fs = {}
-
----@alias Kocos.fs.partitionType "root"|"boot"|"user"
----@alias Kocos.fs.ftype "none"|"regular"|"directory"|"mount"|"blockdev"|"chardev"
-
-fs.FTYPE_NONE = "none"
-fs.FTYPE_REGF = "regular"
-fs.FTYPE_DIR = "directory"
-fs.FTYPE_MNT = "mount"
-fs.FTYPE_BLK = "blockdev"
-fs.FTYPE_CHR = "chardev"
-
----@class Kocos.fs.vdrive
----@field address string
----@field type string
----@field getSectorSize fun(): integer
----@field getPlatterCount fun(): integer
----@field getCapacity fun(): integer
----@field readSector fun(index: integer): string
----@field writeSector fun(index: integer, data: string)
---- readByte/writeByte considered harmful, evil and stinky
----@field readByte fun(index: integer): integer
----@field writeByte fun(index: integer, byte: integer)
-
----@class Kocos.fs.stat
----@field deviceAddress string
----@field deviceType string
----@field inode integer
----@field size integer
----@field lastModified integer
----@field createdAt integer
----@field diskSize integer
----@field diskUsed integer
----@field diskTotal integer
---- Currently unused
----@field perms integer
---- Symlinks are not currently supported
----@field linkPath? string
-
-fs.O_NONBLOCK = 1
-fs.O_CLOEXEC = 2
-
-fs.F_GETFL = "F_GETFL"
-fs.F_SETFL = "F_SETFL"
-fs.F_SETCB = "F_SETCB"
-fs.F_NOTIF = "F_NOTIF"
-
--- This one is triggered BEFORE the finalizer is called, thus the resource is still usable in the listener.
-fs.EV_CLOSED = "closed"
--- As extra arguments: an integer, containing the length of the data that can be read without blocking
-fs.EV_DATAREADY = "data-ready"
--- As extra argumnets: a string, indicating request ID, and an optional string, indicating error if applicable. If no error is passed, operation is assumed to have succeeded atomically.
--- The string ID is conventionally obtained as the error of the successful write.
-fs.EV_WRITEDONE = "write-done"
-
----@param drive Kocos.device
----@return Kocos.fs.vdrive?
-function fs.getVirtualDrive(drive)
-	if drive.type == "drive" then return drive end
-	if drive.type == "partition" then return drive end
-	for _, driver in ipairs(Kocos.drivers) do
-		local virt = driver("FS-vdrive", drive)
-		if virt then return virt end
-	end
-end
-
----@param drive Kocos.device
----@return string[]?
-function fs.retainPartitionsFor(partitions, drive)
-	local toRem = {}
-	for part in component.list("partition", true) do
-		if component.invoke(part, "getDeviceAddress") == drive.address and not table.contains(partitions, part) then
-			table.insert(toRem, part)
-		end
-	end
-	for _, dead in ipairs(toRem) do
-		component.remove(dead)
-	end
-end
-
----@param drive Kocos.device
----@return string[]?
-function fs.getPartitionsOf(drive)
-	for _, driver in ipairs(Kocos.drivers) do
-		local parts = driver("FS-getpartitions", drive)
-		if parts then
-			fs.retainPartitionsFor(parts, drive)
-			return parts
-		end
-	end
-end
-
----@class Kocos.fs.partition: Kocos.fs.vdrive
----@field type "partition"
----@field getDevice fun(): Kocos.device
----@field getDeviceAddress fun(): string
----@field getPartitionType fun(): Kocos.fs.partitionType
----@field getOffset fun(): integer
----@field isReadonly fun(): boolean
-
----@class Kocos.fs.mountpoint
----@field mountc integer
----@field dev Kocos.device
----@field submounts table<string, Kocos.fs.mountpoint>
----@field fsid string
----@field driverData any
----@field driver? function
-
---- Maps parition IDs to filesystem mountpoints
----@type table<string, Kocos.fs.mountpoint>
-fs.allMounts = {}
-
----@type Kocos.fs.mountpoint
-fs.root = nil
-
----@param dev Kocos.device
----@return Kocos.fs.mountpoint?
-function fs.mount(dev)
-	local mountID = dev.address
-	if fs.allMounts[mountID] then
-		fs.allMounts[mountID].mountc = fs.allMounts[mountID].mountc + 1
-		return fs.allMounts[mountID]
-	end
-	for _, driver in ipairs(Kocos.drivers) do
-		local fsid, driverData = driver("FS-mount", dev)
-		if fsid then
-			fs.allMounts[mountID] = {
-				mountc = 1,
-				dev = dev,
-				submounts = {},
-				fsid = fsid,
-				driverData = driverData,
-				driver = driver,
-			}
-			return fs.allMounts[mountID]
-		end
-	end
-end
-
----@param mountpoint Kocos.fs.mountpoint
-function fs.unmount(mountpoint)
-	if not mountpoint.fsid then return end
-	mountpoint.fsid = nil
-	mountpoint.mountc = mountpoint.mountc - 1
-	if mountpoint.mountc > 0 then return end
-	fs.allMounts[mountpoint.dev.address] = nil
-	for _, mount in pairs(mountpoint.submounts) do
-		fs.unmount(mount)
-	end
-	if mountpoint.driver then
-		mountpoint.driver("FS-unmount", mountpoint.driverData)
-	end
-end
-
----@param mountpoint Kocos.fs.mountpoint
-function fs.syncMount(mountpoint)
-	if mountpoint.driver then
-		mountpoint.driver("FS-syncAll", mountpoint.driverData)
-	end
-end
-
-function fs.sync()
-	for _, mount in pairs(fs.allMounts) do
-		fs.syncMount(mount)
-	end
-end
-
----@param path string
-function fs.canonical(path)
-	if path:sub(1, 1) == "/" then path = path:sub(2) end
-    local parts = string.split(path, "%/")
-    local stack = {}
-
-    for _, part in ipairs(parts) do
-        if #part > 0 then
-            table.insert(stack, part)
-            if part == string.rep(".", #part) then
-                for _=1,#part do
-                    stack[#stack] = nil
-                end
-            end
-        end
-    end
-
-    return "/" .. table.concat(stack, "/")
-end
-
-function fs.join(...)
-	return fs.canonical(table.concat({...}, "/"))
-end
-
----@param p string
----@return string, string
-function fs.parentPath(p)
-	p = fs.canonical(p):sub(2)
-	local parts = string.split(p, "/")
-	local name = table.remove(parts, 1)
-	return "/" .. table.concat(parts, "/"), name
-end
-
----@param path string
----@param root string
-function fs.fromRoot(path, root)
-	if path == root then
-		return "/"
-	end
-	if root == "/" then
-		return path
-	end
-	return path:sub(#root+1)
-end
-
----@param path string
----@param ignoreLastLink? boolean
----@return Kocos.fs.mountpoint, string
-function fs.resolve(path, ignoreLastLink)
-	path = fs.canonical(path)
-	while path:sub(1,1) == "/" do path = path:sub(2) end
-	while path:sub(#path) == "/" do path = path:sub(1, -2) end
-
-	local mountpoint, mountpath = fs.root, path
-
+-- Magic
+coroutine.resume = function(co, ...)
 	while true do
-		local done = true
-		if mountpoint.submounts[mountpath] then
-			if ignoreLastLink then
-				break
-			end
-			return mountpoint.submounts[mountpath], ""
-		end
-
-		-- TODO: symlinks
-
-		for m, mp in pairs(mountpoint.submounts) do
-			if path:sub(1, #m + 1) == m .. "/" then
-				mountpoint = mp
-				mountpath = path:sub(#m + 2)
-				done = false
-			end
-		end
-		-- TODO: there appears to be a bug where it doesn't loop
-		if done then break end
-	end
-
-	return mountpoint, mountpath
-end
-
----@param dir string
----@return string[]?, string?
-function fs.list(dir)
-	if not fs.exists(dir) then
-		return nil, Kocos.errno.ENOENT
-	end
-
-	local mnt, p = fs.resolve(dir)
-
-	if not mnt.driver then
-		return nil, Kocos.errno.ENODRIVER
-	end
-
-	local files, err = mnt.driver("FS-listDir", mnt.driverData, p)
-
-	if not files then
-		return nil, err or Kocos.errno.EHWPOISON
-	end
-	return files
-end
-
----@param path string
----@return Kocos.fs.stat?, string?
-function fs.stat(path, checklink)
-	if not fs.exists(path, checklink) then
-		return nil, Kocos.errno.ENOENT
-	end
-
-	local mnt, p = fs.resolve(path, checklink)
-
-	if not mnt.driver then
-		return nil, Kocos.errno.ENODRIVER
-	end
-
-	local stat, err = mnt.driver("FS-stat", mnt.driverData, p)
-
-	if not stat then
-		return nil, err or Kocos.errno.EHWPOISON
-	end
-	return stat
-end
-
----@param path string
----@param mode "r"|"w"|"a"
----@return Kocos.Handle?, string?
-function fs.open(path, mode)
-	if not fs.exists(path) then
-		return nil, Kocos.errno.ENOENT
-	end
-
-	if fs.ftype(path) == fs.FTYPE_DIR then
-		return nil, Kocos.errno.EISDIR
-	end
-
-	local mnt, p = fs.resolve(path)
-
-	if not mnt.driver then
-		return nil, Kocos.errno.ENODRIVER
-	end
-
-	return mnt.driver("FS-openFile", mnt.driverData, p, mode)
-end
-
----@param reader? fun(n: integer): string?, string?
----@param writer? fun(data: string): boolean, string?
----@param finalizer? function
----@param ioctl? fun(action: string, ...): ...
----@return Kocos.Handle
-function fs.fd_from_rwf(reader, writer, finalizer, ioctl)
-	---@type Kocos.Handle
-	return {
-		type = "file",
-		state = "",
-		rc = 1,
-		handle = function(ac, v, ...)
-			if ac == "close" and finalizer then
-				finalizer()
-				return true
-			end
-			if ac == "ioctl" and ioctl then
-				return ioctl(v, ...)
-			end
-			if ac == "read" and reader then
-				return reader(v)
-			end
-			if ac == "write" and writer then
-				return writer(v)
-			end
-			return nil, Kocos.errno.EINVAL
-		end,
-		flags = 0,
-	}
-end
-
----@param path string
----@param perms integer
----@param uid integer
----@param gid integer
----@return boolean?, string?
-function fs.touch(path, perms, uid, gid)
-	local m, p = fs.resolve(path)
-	if not m.driver then
-		return nil, Kocos.errno.EHWPOISON
-	end
-	if fs.ftype(path) == fs.FTYPE_DIR then
-		return nil, Kocos.errno.EISDIR
-	end
-	-- still modifies mtime
-	return m.driver("FS-touch", m.driverData, p, perms, uid, gid)
-end
-
----@param path string
----@param perms integer
----@param uid integer
----@param gid integer
----@return boolean?, string?
-function fs.mkdir(path, perms, uid, gid)
-	local m, p = fs.resolve(path)
-	if not m.driver then
-		return nil, Kocos.errno.EHWPOISON
-	end
-	if fs.exists(path, true) then
-		return nil, Kocos.errno.EEXIST
-	end
-	-- still modifies mtime
-	return m.driver("FS-mkdir", m.driverData, p, perms, uid, gid)
-end
-
----@param path string
----@return Kocos.fs.ftype?, string?
-function fs.ftype(path)
-	local m, p = fs.resolve(path, true)
-	if not m.driver then
-		return nil, Kocos.errno.EHWPOISON
-	end
-	if m.submounts[p] or p == "" then
-		return fs.FTYPE_MNT
-	end
-	return m.driver("FS-ftype", m.driverData, p)
-end
-
----@param path string
----@return boolean?, string?
-function fs.remove(path)
-	local ftype, err = fs.ftype(path)
-	if not ftype then return nil, err end
-	if ftype == fs.FTYPE_NONE then
-		return nil, Kocos.errno.ENOENT
-	end
-	if ftype == fs.FTYPE_MNT then
-		return nil, Kocos.errno.EACCESS
-	end
-	if ftype == fs.FTYPE_DIR then
-		local l, err2 = fs.list(path)
-		if not l then return nil, err2 end
-		if #l > 0 then return nil, Kocos.errno.ENOTEMPTY end
-	end
-	local m, p = fs.resolve(path)
-	if not m.driver then
-		return nil, Kocos.errno.EHWPOISON
-	end
-	return m.driver("FS-remove", m.driverData, p)
-end
-
----@param path string
----@param checklink? boolean
----@return boolean?, string?
-function fs.exists(path, checklink)
-	local m, p = fs.resolve(path, checklink)
-	if not m.driver then
-		return nil, Kocos.errno.EHWPOISON
-	end
-	return m.driver("FS-exists", m.driverData, p)
-end
-
--- super basic managedfs driver
----@param req string
-function fs._defaultManagedFS(req, ...)
-	if req == "FS-mount" then
-		---@type Kocos.device
-		local dev = ...
-		if dev.type ~= "filesystem" then return end
-		return "managedfs", dev
-	end
-	if req == "FS-listDir" then
-		---@type Kocos.device, string
-		local dev, path = ...
-		if not dev.isDirectory(path) then return nil, Kocos.errno.ENOTDIR end
-		return dev.list(path)
-	end
-	if req == "FS-exists" then
-		---@type Kocos.device, string
-		local dev, path = ...
-		return dev.exists(path)
-	end
-	if req == "FS-remove" then
-		---@type Kocos.device, string
-		local dev, path = ...
-		return dev.remove(path)
-	end
-	if req == "FS-ftype" then
-		---@type Kocos.device, string
-		local dev, path = ...
-		if not dev.exists(path) then return fs.FTYPE_NONE end
-		if dev.isDirectory(path) then return fs.FTYPE_DIR end
-		return fs.FTYPE_REGF
-	end
-	if req == "FS-touch" then
-		---@type Kocos.device, string, integer, integer, integer
-		local dev, path, perms, uid, gid = ...
-		local f, err = dev.open(path, dev.exists(path) and "w" or "a")
-		if not f then return false, err end
-		dev.close(f)
-		return true
-	end
-	if req == "FS-mkdir" then
-		---@type Kocos.device, string, integer, integer, integer
-		local dev, path, perms, uid, gid = ...
-		return dev.makeDirectory(path)
-	end
-	if req == "FS-stat" then
-		---@type Kocos.device, string
-		local dev, path = ...
-		local size = dev.size(path) or 0
-		---@type Kocos.fs.stat
-		return {
-			deviceAddress = dev.address,
-			deviceType = dev.type,
-			size = size, -- dirs are 0-sized lol
-			createdAt = 0,
-			lastModified = dev.lastModified(path),
-			diskSize = size,
-			diskUsed = dev.spaceUsed(),
-			diskTotal = dev.spaceTotal(),
-			inode = math.random(0, 2^32-1),
-			perms = 0,
-		}
-	end
-	if req == "FS-openFile" then
-		---@type Kocos.device, string, string
-		local dev, path, mode = ...
-		if dev.isDirectory(path) then return nil, Kocos.errno.EISDIR end
-		local fd, err = dev.open(path, mode)
-		if not fd then return nil, err end
-		---@type Kocos.Handle
-		return {
-			type = "file",
-			state = "",
-			rc = 1,
-			handle = function(act, v, ...)
-				if act == "close" then
-					return dev.close(fd)
-				end
-				if act == "seek" then
-					return dev.seek(fd, v, (...))
-				end
-				if act == "write" then
-					return dev.write(fd, v)
-				end
-				if act == "read" then
-					return dev.read(fd, v)
-				end
-				return nil, Kocos.errno.EBADF
-			end,
-			flags = 0,
-		}
-	end
-end
-
-Kocos.fs = fs
-
-Kocos.printk(Kocos.L_DEBUG, "filesystem subsystem loaded")
-
-Kocos.printk(Kocos.L_INFO, "registering default drivers")
-Kocos.addDriver(fs._defaultManagedFS)
-Kocos.printk(Kocos.L_INFO, "managedfs driver registered")
- -- DevFS abstraction
-local fs = Kocos.fs
-
----@param addr string
-local function devfsAddrSuffix(addr)
-	return addr:sub(1, 3):upper()
-end
-
-local function computeDeviceFiles()
-	---@type table<string, string>
-	local f = {}
-	for addr, type in component.list() do
-		local name
-		if type == "filesystem" then
-			name = "fs" .. devfsAddrSuffix(addr)
-		elseif type == "drive" then
-			name = "hd" .. devfsAddrSuffix(addr)
-		elseif type == "partition" then
-			local devaddr = component.invoke(addr, "getDeviceAddress") or "ERR"
-			name = "hd" .. devfsAddrSuffix(devaddr) .. "_p" .. devfsAddrSuffix(addr)
-		elseif type == "serial" then -- imaginary component for all serial comms
-			name = "usb" .. devfsAddrSuffix(addr)
-		elseif type == "gpu" then
-			name = "gpu" .. devfsAddrSuffix(addr)
-		elseif type == "tunnel" then
-			name = "tnl" .. devfsAddrSuffix(addr)
-		elseif type == "screen" then
-			name = "screen" .. devfsAddrSuffix(addr)
-		elseif type == "eeprom" then
-			name = "eeprom" .. devfsAddrSuffix(addr)
+		local t = {Kocos.resume(co, ...)}
+		if t[1] and sysyieldobj == t[2] then
+			Kocos.sysyield()
 		else
-			-- TODO: handle the virtual drive abstraction
+			return table.unpack(t)
 		end
-		if name then f[name] = addr end
-	end
-	return f
-end
-
----@return string?
-local function devfsPathToDev(path)
-	if string.startswith(path, "components/") then
-		for addr in component.list() do
-			if path == "components/" .. addr then
-				return addr
-			end
-		end
-		return
-	end
-	for p, dev in pairs(computeDeviceFiles()) do
-		if p == path then return dev end
 	end
 end
 
----@param dev string
----@param mode "r"|"a"|"w"
----@return Kocos.Handle?, string?
-local function devfsDevToFD(dev, mode)
-	local t = component.type(dev)
-	if t == "tunnel" then
-		local s, err = Kocos.net.socket("AF_TUNNEL", "dgram")
-		if not s then return nil, err end
-		local ok, err2 = Kocos.handles.connect(s, {address = dev, port = 0})
-		if not ok then return nil, err2 end
-		s.flags = 1
-		return s
-	end
-	if t == "serial" then
-		---@type Kocos.Handle
-		return {
-			flags = 1,
-			type = "device",
-			state = "",
-			rc = 1,
-			handle = function(act, v)
-				if act == "write" then
-					if mode == "r" then return false, Kocos.errno.EBADF end
-					return component.invoke(dev, "write", v)
-				end
-				if act == "read" then
-					if mode ~= "r" then return false, Kocos.errno.EBADF end
-					return component.invoke(dev, "read", v)
-				end
-				return nil, Kocos.errno.EBADF
-			end,
-		}
-	end
-	if t == "drive" or t == "partition" then
-		if mode == "a" then
-			return nil, "bad mode"
-		end
-		local d = component.proxy(dev)
-		---@cast d Kocos.fs.partition
-		local cursor = 0
-
-		---@type Kocos.Handle
-		return {
-			type = "device",
-			state = "",
-			rc = 1,
-			flags = 1,
-			handle = function(act, v, ...)
-				if act == "read" then
-					---@type integer
-					local len = v
-					if mode ~= "r" then return nil, Kocos.errno.EBADF end
-					local cap = d.getCapacity()
-					if cursor >= cap then return end
-					len = math.min(len, cap - cursor, 4*1024)
-					local sectorSize = d.getSectorSize()
-					local parts = {}
-					local left = len
-					while left > 0 do
-						local off = cursor % sectorSize
-						local sector = assert(d.readSector(1 + math.floor(cursor / sectorSize)))
-						-- sub is expensive
-						sector = sector:sub(1+off, len+off)
-						table.insert(parts, sector)
-						left = left - #sector
-						cursor = cursor + #sector
-					end
-					cursor = math.clamp(cursor, 0, cap)
-					return table.concat(parts)
-				end
-				if act == "write" then
-					if mode == "r" then return false, Kocos.errno.EBADF end
-					local cap = d.getCapacity()
-					local sectorSize = d.getSectorSize()
-					local left = math.min(#data, cap - cursor)
-					while left > 0 do
-						local written = 0
-						if cursor % sectorSize == 0 and left >= sectorSize then
-							-- best case scenario possible
-							local sec = data:sub(1, sectorSize)
-							d.writeSector(1 + cursor / sectorSize, sec)
-							written = sectorSize
-						else
-							-- horrible scenario to be in
-							local off = cursor % sectorSize
-							local len = math.min(left, sectorSize)
-							local secId = 1 + math.floor(cursor / sectorSize)
-							local sec = assert(d.readSector(secId))
-							sec = sec:sub(1, off) .. data:sub(1, len) .. sec:sub(1+off+len)
-							d.writeSector(secId, sec)
-							written = len
-						end
-						data = data:sub(1 + written)
-						cursor = cursor + written
-						left = left - written
-					end
-					cursor = math.clamp(cursor, 0, cap)
-					return true
-				end
-				if act == "seek" then
-					local whence, off = v, ...
-					local cap = d.getCapacity()
-					if whence == "set" then
-						cursor = off
-					elseif whence == "cur" then
-						cursor = cursor + off
-					elseif whence == "end" then
-						cursor = cap - off
-					end
-					cursor = math.clamp(cursor, 0, cap)
-					return cursor
-				end
-				if act == "ioctl" then
-					local action = v
-					if action == "devfs:address" then
-						return dev
-					end
-					if action == "devfs:slot" then
-						return component.slot(dev)
-					end
-					if action == "devfs:type" then
-						return component.type(dev)
-					end
-					if action == "devfs:doc" then
-						return component.doc(dev, ...)
-					end
-					if action == "devfs:readpart" then
-						return fs.getParittionsOf(d)
-					end
-					return component.invoke(dev, action, ...)
-				end
-				return nil, Kocos.errno.EBADF
-			end,
-		}
-	end
-	---@type Kocos.Handle
-	return {
-		type = "device",
-		state = "",
-		rc = 1,
-		flags = 0,
-		handle = function(act, method, ...)
-			if act == "ioctl" then
-				if method == "devfs:address" then
-					return dev
-				end
-				if method == "devfs:slot" then
-					return component.slot(dev)
-				end
-				if method == "devfs:type" then
-					return component.type(dev)
-				end
-				if method == "devfs:doc" then
-					return component.doc(dev, ...)
-				end
-				return component.invoke(dev, method, ...)
-			end
-			return nil, Kocos.errno.EBADF
-		end,
-	}
-end
-
----@param path string
----@param mode "r"|"w"|"a"
----@return Kocos.Handle?, string?
-local function devfsMakeFD(path, mode)
-	local errno = Kocos.errno
-	if path == "null" then
-		---@type Kocos.Handle
-		return {
-			type = "device",
-			state = "",
-			handle = function(act)
-				if act == "read" then return end
-				if act == "write" then return true end
-				return nil, Kocos.errno.EBADF
-			end,
-			rc = 1,
-			flags = 0,
-		}
-	end
-	if path == "zero" then
-		if mode ~= "r" then return nil, errno.EPERM end
-		---@type Kocos.Handle
-		return {
-			type = "device",
-			state = "",
-			handle = function(act, len)
-				if act == "read" then
-					if len == math.huge then len = 4096 end
-					return string.rep("\0", len)
-				end
-				return nil, Kocos.errno.EBADF
-			end,
-			rc = 1,
-			flags = 0,
-		}
-	end
-	if path == "random" then
-		if mode ~= "r" then return nil, errno.EPERM end
-		---@type Kocos.Handle
-		return {
-			type = "device",
-			state = "",
-			handle = function(act, len)
-				if act == "read" then
-					if len == math.huge then len = 4096 end
-					local c = ""
-					for _=1,len do
-						c = c .. string.char(math.random(0, 255))
-					end
-					return c
-				end
-				return nil, Kocos.errno.EBADF
-			end,
-			rc = 1,
-			flags = 0,
-		}
-	end
-	if path == "hex" then
-		if mode ~= "r" then return nil, errno.EPERM end
-		---@type Kocos.Handle
-		return {
-			type = "device",
-			state = "",
-			handle = function(act, len)
-				if act == "read" then
-					if len == math.huge then len = 4096 end
-					local c = ""
-					local a = "0123456789ABCDEF"
-					for _=1,len do
-						local i = math.random(1, 16)
-						c = c .. a:sub(i, i)
-					end
-					return c
-				end
-				return nil, Kocos.errno.EBADF
-			end,
-			rc = 1,
-			flags = 0,
-		}
-	end
-	if path:sub(1,3) == "std" then
-		local fd = Kocos.process["STD" .. path:sub(4):upper()]
-		if not fd then return nil, errno.ENOENT end
-		local cur = Kocos.process.current
-		local res = cur.fds[fd]
-		if not res then return nil, errno.EBADF end
-		return res
-	end
-	local dev = devfsPathToDev(path)
-	if dev then
-		return devfsDevToFD(dev, mode)
-	end
-	return nil, errno.ENOENT
-end
-
----@param req string
-function Kocos._default_devfs(req, ...)
-	if req == "FS-mount" then
-		---@type Kocos.device
-		local dev = ...
-		if dev.type ~= "devfs" then return end
-		return "devfs"
-	end
-	if req == "FS-mkdir" then
-		return nil, Kocos.errno.EPERM
-	end
-	if req == "FS-touch" then
-		return nil, Kocos.errno.EPERM
-	end
-	if req == "FS-openFile" then
-		---@type unknown, string, string
-		local _, path, mode = ...
-		return devfsMakeFD(path, mode)
-	end
-	if req == "FS-listDir" then
-		---@type unknown, string
-		local _, path = ...
-		if path == "" then
-			local files = {"components", "null", "zero", "random", "hex", "stdin", "stderr", "stdout", "stdterm"}
-			for f in pairs(computeDeviceFiles()) do
-				table.insert(files, f)
-			end
-			return files
-		end
-		if path == "components" then
-			local f = {}
-			for addr in component.list() do
-				table.insert(f, addr)
-			end
-			return f
-		end
-		return nil, path
-	end
-	if req == "FS-ftype" then
-		---@type unknown, string
-		local _, path = ...
-		if path == "" then return fs.FTYPE_DIR end
-		if path == "components" then return fs.FTYPE_DIR end
-		if path == "null" then return fs.FTYPE_CHR end
-		if path == "zero" then return fs.FTYPE_CHR end
-		if path == "random" then return fs.FTYPE_CHR end
-		if path == "hex" then return fs.FTYPE_CHR end
-		if path == "stdin" then return fs.FTYPE_CHR end
-		if path == "stderr" then return fs.FTYPE_CHR end
-		if path == "stdout" then return fs.FTYPE_CHR end
-		if path == "stdterm" then return fs.FTYPE_CHR end
-		for f in pairs(computeDeviceFiles()) do
-			if path == f then return fs.FTYPE_BLK end
-		end
-		if string.startswith(path, "components/") then
-			for addr in component.list() do
-				if path == "components/" .. addr then
-					return fs.FTYPE_BLK
-				end
-			end
-		end
-		return fs.FTYPE_NONE
-	end
-	if req == "FS-exists" then
-		---@type unknown, string
-		local _, path = ...
-		if path == "" then return true end
-		if path == "components" then return true end
-		if path == "null" then return true end
-		if path == "zero" then return true end
-		if path == "random" then return true end
-		if path == "hex" then return true end
-		if path == "stdin" then return true end
-		if path == "stderr" then return true end
-		if path == "stdout" then return true end
-		if path == "stdterm" then return true end
-		for f in pairs(computeDeviceFiles()) do
-			if path == f then return true end
-		end
-		return false
-	end
-	if req == "FS-stat" then
-		---@type unknown, string
-		local _, path = ...
-		local dev = devfsPathToDev(path)
-		if dev then
-			local ctype = component.type(dev)
-			---@type integer
-			local size = 0 -- TODO: make it correct
-			local used = 0
-			if ctype == "filesystem" then
-				used = component.invoke(dev, "spaceUsed")
-				size = component.invoke(dev, "spaceTotal")
-			elseif ctype == "drive" or ctype == "partition" then
-				size = component.invoke(dev, "getCapacity")
-			end
-			---@type Kocos.fs.stat
-			return {
-				deviceAddress = dev,
-				deviceType = ctype,
-				size = size,
-				createdAt = 0,
-				lastModified = 0,
-				diskSize = 0,
-				diskUsed = used,
-				diskTotal = size,
-				inode = math.random(0, 2^32-1),
-				perms = 0,
-			}
-		end
-		---@type Kocos.fs.stat
-		return {
-			deviceAddress = "devfs",
-			deviceType = "devfs",
-			size = 0,
-			createdAt = 0,
-			lastModified = 0,
-			diskSize = 0,
-			diskUsed = 0,
-			diskTotal = 0,
-			inode = math.random(0, 2^32-1),
-			perms = 0,
-		}
-	end
-end
-
-Kocos.printk(Kocos.L_DEBUG, "devfs subsystem loaded")
-Kocos.printk(Kocos.L_DEBUG, "adding devfs driver")
-
-Kocos.addDriver(Kocos._default_devfs)
-
-Kocos.printk(Kocos.L_DEBUG, "adding devfs component")
-
-component.add {
-	address = "devfs",
-	type = "devfs",
-	invoke = function() end,
-	methods = {},
-	slot = -1,
-}
- local process = {}
-
-process.npid = 0
-
-process.execDeadline = math.huge
-
--- File descriptors / resources with special meanings
---- The standard input stream
-process.STDIN = 0
---- The standard output stream
-process.STDOUT = 1
---- The standard error stream
-process.STDERR = 2
---- The standard terminal stream
-process.STDTERM = 3
-
----@class Kocos.process.module
+---@class Kocos.procmod
 ---@field data string
 ---@field src string
 
----@class Kocos.process.sharedLib
----@field modules table<string, Kocos.process.module>
----@field deps Kocos.process.sharedLib[]
-
----@alias Kocos.process.condition fun(): boolean
-
----@class Kocos.process
+---@class Kocos.vmproc
 ---@field state "running"|"dying"|"dead"|"finished"
 ---@field pid integer
 ---@field uid integer
 ---@field gid integer
----@field euid integer
----@field egid integer
----@field thread thread
----@field namespace _G
----@field args string[]
----@field blockUntil Kocos.process.condition[]
+---@field argv string[]
 ---@field env table<string, string>
----@field modules table<string, Kocos.process.module>
----@field deps Kocos.process.sharedLib[]
----@field driver? function
----@field fds table<integer, Kocos.Handle>
----@field signals table<string, function>
----@field children table<integer, Kocos.process>
----@field parent? Kocos.process
+---@field parent? Kocos.vmproc
+---@field children table<integer, Kocos.vmproc>
+---@field coro? thread
+---@field boundKmod string[]
+---@field blockUntil (fun(): boolean)[]
+---@field modules table<string, Kocos.procmod>
 ---@field stopped boolean
 ---@field cwd string
 ---@field root string
----@field exe? string
+---@field exe string
 ---@field exitcode integer
----@field tracer? Kocos.process
+---@field debugger? Kocos.vmproc
 ---@field daemon? string
 ---@field ev_listener? function
----@field reEnterAs? Kocos.process
 ---@field desiredExecTime? number
+---@field signalHandlers table<string, function>
 ---@field proclocal table
+---@field fds table<integer, Kocos.descriptor>
+---@field sleepUntil number
 
----@type table<integer, Kocos.process>
-process.allProcs = {}
-
----@class Kocos.process.daemon
----@field proc Kocos.process
+---@class Kocos.daemon
+---@field proc Kocos.vmproc
 ---@field callback fun(cpid: integer, ...): ...
 
----@type table<string, Kocos.process.daemon>
-process.daemons = {}
+---@type table<integer, Kocos.vmproc>
+Kocos.processes = {}
 
-function process.nextPid()
-	if Kocos.args.useExtremelySecurePidGeneration then
-		local pid = math.random(1, 2^32-1)
-		while process.allProcs[pid] do
-			pid = math.random(1, 2^32-1)
-		end
-		return pid
+---@type Kocos.vmproc[]
+Kocos.procStack = {}
+
+-- Kernel process
+Kocos.processes[0] = {
+	state = "running",
+	pid = 0,
+	uid = 0,
+	gid = 0,
+	argv = {},
+	env = {},
+	parent = nil,
+	children = {},
+	-- pretend its already gone
+	coro = nil,
+	boundKmod = {},
+	blockUntil = {},
+	modules = {},
+	stopped = false,
+	cwd = "/",
+	root = "/",
+	exe = Kocos.getCmdlineStr("KPATH", "/boot/vmkocos"),
+	exitcode = 0,
+	debugger = nil,
+	daemon = nil,
+	ev_listener = nil,
+	desiredExecTime = nil,
+	signalHandlers = {},
+	proclocal = {},
+	fds = {},
+	sleepUntil = 0,
+}
+
+Kocos.procStack[1] = Kocos.processes[0]
+
+Kocos.defaultExecTime = Kocos.getCmdlineNum("EXEC_TIME", 1)
+
+---@type table<string, Kocos.daemon>
+Kocos.daemons = {}
+
+local npid = 1
+
+function Kocos.currentProcess()
+	return Kocos.procStack[#Kocos.procStack]
+end
+
+---@param proc Kocos.vmproc
+function Kocos.pushProcess(proc)
+	table.insert(Kocos.procStack, proc)
+end
+
+function Kocos.popProcess()
+	assert(#Kocos.procStack > 1, "out of processes")
+	Kocos.procStack[#Kocos.procStack] = nil
+end
+
+---@param proc Kocos.vmproc
+---@param f function
+---@param msgh function
+function Kocos.procXCall(proc, f, msgh, ...)
+	Kocos.pushProcess(proc)
+	local t = {xpcall(f, msgh, ...)}
+	Kocos.popProcess()
+	return t
+end
+
+---@param proc Kocos.vmproc
+---@param f function
+function Kocos.procCall(proc, f, ...)
+	Kocos.pushProcess(proc)
+	local t = {pcall(f, ...)}
+	Kocos.popProcess()
+	return t
+end
+
+---@param proc Kocos.vmproc
+---@param exit integer
+function Kocos.terminateProcess(proc, exit)
+	if proc.state ~= "running" then return end
+	proc.state = "finished"
+	proc.exitcode = exit
+	if proc.pid == 0 then
+		Kocos.panickf("KERNEL EXITED: %d", exit)
+		return
 	end
-	local pid = process.npid
-	process.npid = process.npid + 1
-	return pid
-end
-
----@param thread thread
----@param namespace _G
----@param uid integer
----@param gid integer
----@return Kocos.process
-function process.create(thread, namespace, uid, gid)
-	local pid = process.nextPid()
-
-	---@type Kocos.process
-	local proc = {
-		pid = pid,
-		uid = uid,
-		gid = gid,
-		euid = uid,
-		egid = gid,
-		thread = thread,
-		namespace = namespace,
-		args = {},
-		env = {},
-		modules = {},
-		deps = {},
-		fds = {},
-		signals = {},
-		children = {},
-		stopped = false,
-		state = "running",
-		cwd = "/",
-		root = "/",
-		exitcode = 0,
-		blockUntil = {},
-		proclocal = {},
-	}
-
-
-	process.allProcs[pid] = proc
-
-	return proc
-end
-
----@param proc Kocos.process
----@param func function
----@return Kocos.process
-function process.fork(proc, func)
-	local forked = process.create(coroutine.create(func), proc.namespace, proc.uid, proc.gid)
-	forked.euid = proc.euid
-	forked.egid = proc.egid
-	forked.args = table.copy(proc.args)
-	forked.env = table.copy(proc.env)
-	forked.blockUntil = table.copy(proc.blockUntil)
-	-- no table.copy cuz they're immutable anyways
-	forked.modules = proc.modules
-	forked.deps = proc.deps
-	-- driver is not copied over
-	-- resources are retained
-	for fd, res in pairs(proc.fds) do
-		forked.fds[fd] = res
-		res.rc = res.rc + 1
+	if proc.pid == 1 then
+		Kocos.panickf("INIT EXITED: %d", exit)
+		return
 	end
-	forked.stopped = proc.stopped
-	forked.cwd = proc.cwd
-	forked.root = proc.root
-	forked.exitcode = proc.exitcode
-	forked.tracer = proc.tracer
-	forked.parent = proc
-	forked.exe = proc.exe
-	forked.desiredExecTime = proc.desiredExecTime
-	proc.children[forked.pid] = forked
-	return forked
-end
-
----@param proc Kocos.process
----@param parent Kocos.process
-function process.isDecendantOf(proc, parent)
-	while parent do
-		if proc.parent == parent then return true end
-		parent = parent.parent
+	if proc.parent then
+		Kocos.sendSignal(proc.parent, "SIGCHLD", proc.pid, exit)
 	end
-	return false
+	Kocos.sendSignal(proc, "SIGABRT")
+
+	-- TODO: cleanup
+	if proc.ev_listener then
+		Kocos.forget(proc.ev_listener)
+	end
+
+	for _, mod in ipairs(proc.boundKmod) do
+		Kocos.removeModule(mod)
+	end
+
+	for _, f in pairs(proc.fds) do
+		Kocos.closeDescriptor(f)
+	end
+	proc.fds = {}
+
+	if proc.daemon then
+		Kocos.daemons[proc.daemon] = nil
+	end
+
+	if Kocos.currentProcess() == proc then
+		Kocos.sysyield()
+		return
+	end
 end
 
--- posix-y signals
-process.SIGABRT = "SIGABRT" -- process closed
-process.SIGALRM = "SIGALRM" -- alarm
-process.SIGTERM = "SIGTERM" -- terminate
-process.SIGKILL = "SIGKILL" -- die
-process.SIGUSR1 = "SIGUSR1" -- user specified
-process.SIGUSR2 = "SIGUSR2" -- user specified 2
-process.SIGCHLD = "SIGCHLD" -- child died
-process.SIGINT = "SIGINT" -- interrupted
-process.SIGPIPE = "SIGPIPE" -- the pipe is gone
-process.SIGQUIT = "SIGQUIT" -- quit process
-process.SIGSTOP = "SIGSTOP" -- stop process
-process.SIGTSTP = "SIGTSTP" -- stop process too
-process.SIGSYS = "SIGSYS" -- bad syscall
-process.SIGWINCH = "SIGWINCH" -- window changed
-process.SIGURG = "SIGURG" -- urgent stuff
-process.SIGTRAP = "SIGTRAP" -- a trap
-process.SIGCONT = "SIGCONT" -- continue
-process.SIGSYSC = "SIGSYSC" -- when tracing, traced process did a system call
-process.SIGSYSR = "SIGSYSR" -- when tracing, traced process did a system return
-process.SIGPWR = "SIGPWR" -- shutdown or reboot
-
--- and these non-POSIX ones used by displayd
-process.SIGWINTOUCH = "SIGWINTOUCH" -- window touched
-process.SIGWINDRAG = "SIGWINDRAG" -- window touched
-process.SIGWINDROP = "SIGWINDROP" -- window touched
-process.SIGWINSCROLL = "SIGWINSCROLL" -- window touched
-process.SIGKEYUP = "SIGKEYUP" -- key released
-process.SIGKEYDOWN = "SIGKEYDOWN" -- key pressed
-process.SIGKEYPASTE = "SIGKEYPASTE" -- clipboard
-process.SIGSCRADD = "SIGSCRADD" -- screen added
-process.SIGSCRREM = "SIGSCRREM" -- screen removed
-
----@param proc Kocos.process
----@param signal string
-function process.raise(proc, signal, ...)
-	if not proc then return end
-	if signal == process.SIGSTOP then
+---@param proc Kocos.vmproc
+---@param sig string
+function Kocos.sendSignal(proc, sig, ...)
+	-- forbidden.
+	-- This prevends pkilling the kernel or init.
+	if proc.pid == 0 or proc.pid == 1 then return end
+	if sig == "SIGSTOP" then
 		proc.stopped = true
-		if process.current == proc then coroutine.yield() end
+		if Kocos.currentProcess() == proc then coroutine.yield() end
 		return
 	end
-	if signal == process.SIGKILL then
-		process.terminate(proc)
+	if sig == "SIGKILL" then
+		Kocos.terminateProcess(proc, 1)
 		return
 	end
-	if signal == process.SIGCONT then
+	if sig == "SIGCONT" then
 		proc.stopped = false
 		return
 	end
-	if proc.signals[signal] then
-		-- Handler!!!!!!!
-		local ok, err = process.pcall(proc, proc.signals[signal], ...)
-		if not ok then
-			Kocos.printkf(Kocos.L_WARN, "pid %d: error in handler for signal %s: %s", proc.pid, signal, err)
+	if proc.signalHandlers[sig] then
+		local t = Kocos.procCall(proc, proc.signalHandlers[sig], ...)
+		if not t[1] then
+			Kocos.printkf(Kocos.L_WARN, "pid %d: error in handler for signal %s: %s", proc.pid, sig, t[2])
 		end
-		-- no return to allow unmodifiable behavior
 	else
-		-- Default handlers
-		if signal == process.SIGINT then
-			process.terminate(proc)
+		-- default handlers
+		if sig == "SIGINT" then
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
-		if signal == process.SIGPIPE then
-			process.terminate(proc)
+		if sig == "SIGPIPE" then
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
-		if signal == process.SIGUSR1 then
-			process.terminate(proc)
+		if sig == "SIGUSR1" then
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
-		if signal == process.SIGUSR2 then
-			process.terminate(proc)
+		if sig == "SIGUSR2" then
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
-		if signal == process.SIGTRAP then
+		if sig == "SIGTRAP" then
 			local err = ...
 			if type(err) == "string" then
-				process.pcall(proc, syscall, "write", process.STDERR, err .. "\n")
+				Kocos.procCall(proc, syscall, "write", 2, err .. "\n")
 			end
-			process.terminate(proc)
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
-		if signal == process.SIGTERM then
-			process.terminate(proc)
+		if sig == "SIGTERM" then
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
 	end
 
 	-- Unmodifiable behavior
-	if signal == process.SIGABRT then
-		process.terminate(proc, 1)
+	if sig == "SIGABRT" then
+		Kocos.terminateProcess(proc, 1)
 		return
 	end
 end
 
----@param proc Kocos.process
----@param f fun(...): ...
----@param msgh fun(s: any): any
----@return boolean, ...
-function process.xpcall(proc, f, msgh, ...)
-	local oldCurProc = process.current
-	process.current = proc
-	-- OOM problem!!!!
-	local t = {xpcall(f, msgh, ...)}
-	process.current = oldCurProc
-	return table.unpack(t)
-end
+---@param proc Kocos.vmproc
+function Kocos.closeProcess(proc)
+	-- nice try
+	if proc.state == "dying" then return end
+	if not Kocos.processes[proc.pid] then return end
+	Kocos.terminateProcess(proc, 1)
+	proc.state = "dying"
 
----@param proc Kocos.process
----@param f fun(...): ...
----@return boolean, ...
-function process.pcall(proc, f, ...)
-	return process.xpcall(proc, f, tostring, ...)
-end
+	-- Reparent children
+	while true do
+		local cpid, child = next(proc.children)
+		if not cpid or not child then break end
 
----@param proc Kocos.process
----@param res Kocos.Handle
-function process.moveResource(proc, res)
-	local fd = 0
-	while proc.fds[fd] do fd = fd + 1 end
-	proc.fds[fd] = res
-	return fd
-end
-
----@param proc Kocos.process
----@param exit? integer
-function process.terminate(proc, exit)
-	if proc.state ~= "running" then return end -- nice try, signal handler
-	proc.state = "finished"
-	proc.exitcode = exit or 1
-	if proc == process.root then
-		Kocos.panickf("KERNEL EXITED: %d", proc.exitcode)
-		return
-	end
-	if proc == Kocos.process.init then
-		Kocos.panickf("INIT EXITED: %d", proc.exitcode)
-		return
-	end
-	if proc.parent then
-		process.raise(proc.parent, process.SIGCHLD, proc.pid, proc.exitcode)
-	end
-
-	process.raise(proc, process.SIGABRT)
-
-	if proc.driver then
-		Kocos.removeDriver(proc.driver)
-		proc.driver = nil
-	end
-	if proc.ev_listener then
-		Kocos.event.forget(proc.ev_listener)
-		proc.ev_listener = nil
-	end
-
-	if proc.daemon then
-		-- daemon is gone
-		process.daemons[proc.daemon] = nil
-	end
-
-	for _, res in pairs(proc.fds) do
-		Kocos.handles.close(res)
-	end
-	proc.fds={}
-
-	if process.current == proc then
-		coroutine.yield()
-		return
-	end
-end
-
----@param proc Kocos.process
-function process.close(proc)
-	if proc.state == "dying" then return end -- nice try, signal handler
-	if not process.allProcs[proc.pid] then return end -- somehow died twice???
-	process.terminate(proc, 1)
-	proc.state = "dying" -- to prevent bad shit
-
-	---@type Kocos.process[]
-	local allChildren = {}
-	for _, child in pairs(proc.children) do table.insert(allChildren, child) end
-
-	for _, child in ipairs(allChildren) do
-		process.close(child)
+		proc.children[cpid] = nil -- remove child
+		child.parent = Kocos.processes[1] or Kocos.processes[0]
+		child.parent.children[cpid] = child
 	end
 
 	if proc.parent then
 		proc.parent.children[proc.pid] = nil
 	end
 
-
-	process.allProcs[proc.pid] = nil -- and he's gone
+	Kocos.processes[proc.pid] = nil -- rip
 	proc.state = "dead"
 end
 
----@param proc Kocos.process
----@param path string
-function process.resolve(proc, path)
-	if path:sub(1,1) == "/" then
-		return Kocos.fs.join(proc.root, Kocos.fs.canonical(path))
-	end
-	return Kocos.fs.join(proc.root, proc.cwd, path)
-end
-
----@param lib Kocos.process.sharedLib
----@param module string
----@param refs? table
----@return Kocos.process.module?
-function process.libreadmod(lib, module, refs)
-	refs = refs or {}
-	-- in case of cyclical bullshit dependencies
-	if refs[lib] then return end
-	refs[lib] = true
-
-	---@type Kocos.process.module?
-	local mod = lib.modules[module]
-	if mod then return mod end
-
-	for _, dep in ipairs(lib.deps) do
-		mod = process.libreadmod(dep, module, refs)
-		if mod then return mod end
-	end
-end
-
----@param proc Kocos.process
----@param module string
----@return Kocos.process.module?
-function process.readmod(proc, module)
-	---@type Kocos.process.module?
-	local mod = proc.modules[module]
-	if mod then return mod end
-
-	local refs = {}
-
-	for _, dep in ipairs(proc.deps) do
-		mod = process.libreadmod(dep, module, refs)
-		if mod then return mod end
-	end
-end
-
----@class Kocos.process.image
+---@class Kocos.procimage
 ---@field init function
----@field modules table<string, Kocos.process.module>
----@field deps string[]
+---@field modules table<string, Kocos.procmod>
 
----@param proc Kocos.process
----@param argv string[]
----@param env table<string, string>
----@param namespace _G
----@return boolean?, string?
-function process.exec(proc, path, argv, env, namespace)
-	local data = assert(readfile(path))
-	for _, driver in ipairs(Kocos.drivers) do
-		-- PROC-binfmt
-		---@type Kocos.process.image?, string?
-		local img, err2 = driver("PROC-binfmt", path, data, namespace)
-		if err2 then
-			-- actual error instead of being ignored
-			return nil, err2
-		end
-		if img then
-			-- if this is nil and err2 is also nil, means driver ignored it
-			proc.exe = path
-			proc.args = argv
-			proc.env = env
-			proc.namespace = namespace
-			if proc.driver then
-				Kocos.removeDriver(proc.driver)
-				proc.driver = nil
-			end
-			proc.thread = coroutine.create(img.init)
-			proc.modules = img.modules
-			proc.deps = {} -- TODO: deps
-			proc.signals = {} -- Signal handlers are ignored
-			---@type integer[]
-			local toClose = {}
-			for fd, res in pairs(proc.fds) do
-				-- TODO: check cloexec
-				if (res.flags & Kocos.fs.O_CLOEXEC) ~= 0 then
-					table.insert(toClose, fd)
-				end
-			end
-			for _, fd in ipairs(toClose) do
-				local res = proc.fds[fd]
-				Kocos.handles.close(res)
-				proc.fds[fd] = nil
-			end
-			return true
-		end
-	end
-
-	return nil, Kocos.errno.ENOEXEC
-end
-
---- A function which can be used as the thread when no special
---- initialization needs to happen
-function process.basicThread()
-	require("_start", true)
-end
-
----@param pid integer
-function process.isDead(pid)
-	return not process.allProcs[pid]
-end
-
----@param proc Kocos.process
-function process.isRunning(proc)
-	return proc.state == "running"
-end
-
----@param proc Kocos.process
-function process.isBlocked(proc)
-	while #proc.blockUntil > 0 do -- best feature in all of gaming
-		if proc.blockUntil[1]() then
-			-- holy shit we're free
-			table.remove(proc.blockUntil, 1)
-		else
-			-- darn
-			return true
-		end
-	end
-	return false
-end
-
----@param proc Kocos.process
----@param condition Kocos.process.condition
-function process.blockUntil(proc, condition)
-	table.insert(proc.blockUntil, condition)
-	if proc.thread == coroutine.running() then
-		coroutine.yield()
-	elseif process.current.pid == proc.pid then
-		-- it seems as if we are in a signal handler or callback on another process' thread
-		-- this is like categorically awful situation, but we can still work with it
-		while process.isBlocked(proc) do
-			coroutine.yield()
-		end
-	end
-end
-
----@param proc Kocos.process
-function process.allowedTime(proc)
-	return proc.desiredExecTime or 0.2
-end
-
----@param proc Kocos.process
-function process.resume(proc)
+---@param proc Kocos.vmproc
+function Kocos.resumeProcess(proc)
+	if proc.state ~= "running" then return end
 	if proc.stopped then return end
-	if process.isBlocked(proc) then return end
-	if not process.isRunning(proc) then return end
-	if coroutine.status(proc.thread) ~= "suspended" then return end
-	local old = process.current
-	process.current = proc.reEnterAs or proc
-	local oldExec = process.execDeadline
-	process.execDeadline = computer.uptime() + process.allowedTime(proc)
-	local ok, err = coroutine.resume(proc.thread)
-	-- TODO: compute how "nice" the value is
-	proc.reEnterAs = process.current
-	if proc.reEnterAs == proc then proc.reEnterAs = nil end
-	process.execDeadline = oldExec
-	process.current = old
+	if not proc.coro then return end
+	if coroutine.status(proc.coro) ~= "running" then return end
+	Kocos.pushProcess(proc)
+	Kocos.execDeadline = computer.uptime() + 0.1
+	local ok, err = Kocos.resume(proc.coro)
+	Kocos.popProcess()
+
 	if not ok then
-		Kocos.printkf(Kocos.L_ERROR, "Process %d crashed: %s", proc.pid, debug.traceback(proc.thread, err))
-		process.raise(proc, process.SIGTRAP, debug.traceback(proc.thread, err))
+		Kocos.printkf(Kocos.L_ERROR, "Process %d crashed: %s", proc.pid, err)
+		Kocos.sendSignal(proc, "SIGTRAP", debug.traceback(proc.coro, err))
 		return
 	end
-	if not process.isRunning(proc) then return end
-	if coroutine.status(proc.thread) == "dead" then
+
+	-- killed
+	if proc.state ~= "running" then return end
+
+	-- coroutine gone
+	if coroutine.status(proc.coro) == "dead" then
 		local exit = err
 		if type(exit) ~= "number" then exit = 0 end
-		process.terminate(proc, exit)
+		Kocos.terminateProcess(proc, exit)
 	end
 end
 
----@param proc Kocos.process
-function process.isRoot(proc)
-	return proc.uid == 0 or proc.euid == 0
-end
-
-function process.run()
-	for _, proc in pairs(process.allProcs) do
-		process.resume(proc)
-	end
-end
-
-local rawload = load
-
--- safe version of load
-
----@param chunk function|string
----@param chunkname? string
----@param mode? "t"|"b"|"bt"
----@param env? table
----@return function?, string? error_message
-function load(chunk, chunkname, mode, env)
-	return rawload(chunk, chunkname, mode, env or process.current.namespace)
-end
-
-Kocos.printk(Kocos.L_DEBUG, "process system loaded")
-
-Kocos.printk(Kocos.L_DEBUG, "creating kernel process")
-process.current = process.create(coroutine.running(), _G, 0, 0)
-process.root = process.current
-
-Kocos.process = process
- -- Requiring files!!!
-
-local process = Kocos.process
-
----@param modname string
----@param uncached? boolean
----@param env? _G
----@return any, string
-function require(modname, uncached, env)
-	--- Prob very temporary, will need to be tweaked later
-	env = env or process.current.namespace
-
-	if env.package.loaded[modname] ~= nil and not uncached then
-		return env.package.loaded[modname], ':loaded:'
-	end
-
-	local mod = process.readmod(process.current, modname)
-
-	if mod then
-		local f = assert(load(mod.data, "=" .. mod.src))
-		local v = f(modname, uncached)
-		if v == nil then v = true end
-		if not uncached then env.package.loaded[modname] = v end
-		return v, ':module:'
-	end
-
-	local luaCode = package.searchpath(modname, process.current.env["LUA_PATH"] or env.package.path)
-
-	if luaCode then
-		--if not uncached then env.package.loaded[modname] = true end
-		local v = dofile(luaCode, modname, uncached)
-		if v == nil then v = true end
-		if not uncached then env.package.loaded[modname] = v end
-		return v, luaCode
-	end
-
-	error("could not find module: " .. modname, 2)
-end
- -- Default executable formats
-
--- Header: --!lua (6 bytes)
--- Links in: the runtime
----@param ev "PROC-binfmt"
----@param path string
----@param data string
----@param namespace _G
----@return Kocos.process.image?, string?
-function Kocos._default_luaExec(ev, path, data, namespace)
-	if ev ~= "PROC-binfmt" then return end
-
-	if data:sub(1, 6) ~= "--!lua" then return end
-
-	local init, err = load(data, "=" .. path, nil, namespace)
-	if not init then return nil, err end
-
-	---@type Kocos.process.image
-	return {
-		init = function()
-			require(Kocos.args.luaExecRT or "luart")
-			local ok, exitcode = xpcall(init, debug.traceback, table.unpack(Kocos.process.current.args))
-			if ok then
-				if type(exitcode) == "number" then
-					Kocos.process.terminate(Kocos.process.current, exitcode)
-				else
-					Kocos.process.terminate(Kocos.process.current, 0)
-				end
-			else
-				Kocos.printkf(Kocos.L_WARN, "process %d died: %s", Kocos.process.current.pid, exitcode)
-				Kocos.process.raise(Kocos.process.current, "SIGTRAP", exitcode)
-			end
-		end,
-		deps = {Kocos.args.luaExecRTF},
-		modules = {},
-	}
-end
-
--- Header: #! (2 bytes)
--- Links in: nothing
----@param ev "PROC-binfmt"
----@param path string
----@param data string
----@param namespace _G
----@return Kocos.process.image?, string?
-function Kocos._default_shebang(ev, path, data, namespace)
-	if ev ~= "PROC-binfmt" then return end
-	if data:sub(1, 2) ~= "#!" then return end
-
-	local nl = string.find(data, "\n")
-	if nl then
-		data = string.sub(data, 1, nl-1)
-	end
-
-	local cmd = data:sub(3)
-	local args = string.split(cmd, " ")
-	cmd = table.remove(args, 1)
-	table.insert(args, path)
-	return {
-		init = function()
-			local ok, err = syscall("exec", cmd, args)
-			if ok then
-				Kocos.process.terminate(Kocos.process.current, 0)
-			else
-				Kocos.process.raise(Kocos.process.current, "SIGTRAP", err)
-			end
-		end,
-		deps = {},
-		modules = {},
-	}
-end
-
-Kocos.addDriver(Kocos._default_luaExec)
-Kocos.addDriver(Kocos._default_shebang)
- -- Networking layer
-local net = {}
-local errno = Kocos.errno
-
----@alias Kocos.net.socketstate "init"|"connecting"|"connected"|"listening"|"closed"
-
-net.O_NONBLOCK = Kocos.fs.O_NONBLOCK
-
--- Events similar to FS
-
-net.EV_CLOSED = Kocos.fs.EV_CLOSED
-net.EV_DATAREADY = Kocos.fs.EV_DATAREADY
-net.EV_WRITEDONE = Kocos.fs.EV_WRITEDONE
---- on success, it should contain 2 nilable strings: the connection ID and the error. If error is nil, the operation succeeded. The connection ID is meant to be returned by connect() and be *unique*
-net.EV_CONNECTDONE = "connect-done"
-
----@class Kocos.net.addrinfo: table
---- An address of some kind depending on networking technology
----@field address any
----@field port integer
-
----@param domain string
----@param protocol string
----@param host string
---- Either a name of an application-layer protocol or the port number
----@param service? string|integer
----@return Kocos.net.addrinfo?, string?
-function net.getaddrinfo(domain, protocol, host, service)
-	for _, driver in ipairs(Kocos.drivers) do
-		local s, err = driver("NET-addrinfo", domain, protocol, host, service)
-		if err then
-			return nil, err
-		end
-		if s then
-			return s
-		end
-	end
-	return nil, errno.ENODRIVER
-end
-
----@param domain string
----@param socktype string
----@param protocol? string
----@return Kocos.Handle?, string?
-function net.socket(domain, socktype, protocol)
-	for _, driver in ipairs(Kocos.drivers) do
-		local s, err = driver("NET-socket", domain, socktype, protocol)
-		if err then
-			return nil, err
-		end
-		if s then
-			return s
-		end
-	end
-	return nil, errno.ENODRIVER
-end
-
-Kocos.net = net
-Kocos.printk(Kocos.L_DEBUG, "network subsystem loaded")
- ---@alias Kocos.HandleAction "close"|"write"|"read"|"seek"|"ioctl"|"connect"|"listen"|"accept"
-
-local errno = Kocos.errno
-
----@class Kocos.Handle
----@field type "file"|"socket"|"device"|"lock"|"pipe"|"timer"
----@field state string
----@field rc number
----@field handle fun(req: Kocos.HandleAction, ...): ...
----@field flags integer
----@field listener? function
----@field evbuf? table[]
-
-local handles = {}
-
-handles.MAX_EVBUF = 8
-
----@param h Kocos.Handle
----@param data string
----@return boolean, string?
-function handles.write(h, data)
-	if h.type == "socket" and h.state ~= "connected" then
-		return false, errno.EAGAIN
-	end
-	return h.handle("write", data)
-end
-
----@param h Kocos.Handle
----@param len? integer
----@return string?, string?
-function handles.read(h, len)
-	if h.type == "socket" and h.state ~= "connected" then
-		return nil, errno.EAGAIN
-	end
-	return h.handle("read", len or math.huge)
-end
-
----@param h Kocos.Handle
----@param whence? "set"|"cur"|"end"
----@param off? integer
----@return integer?, string?
-function handles.seek(h, whence, off)
-	return h.handle("seek", whence or "cur", off or 0)
-end
-
----@param h Kocos.Handle
----@param action string
----@return ...
-function handles.ioctl(h, action, ...)
-	return h.handle("ioctl", action, ...)
-end
-
----@param h Kocos.Handle
----@param ev string
-function handles.notify(h, ev, ...)
-	if h.listener then
-		h.listener(ev, ...)
-	else
-		h.evbuf = h.evbuf or {}
-		table.insert(h.evbuf, {...})
-		while #h.evbuf > handles.MAX_EVBUF do
-			table.remove(h.evbuf, 1)
-		end
-	end
-end
-
----@parma h Kocos.Handle
----@param f function?
-function handles.setlistener(h, f)
-	if h.evbuf and f then
-		for _, ev in ipairs(h.evbuf) do
-			f(table.unpack(ev))
-		end
-		-- save the memory!!
-		h.evbuf = nil
-	end
-	h.listener = f
-end
-
----@param h Kocos.Handle
-function handles.close(h)
-	h.rc = h.rc - 1
-	if h.rc <= 0 then
-		h.state = "closed"
-		h.handle("close")
-	end
-end
-
-function handles.unusable(...)
-	return nil, errno.EBADF
-end
-
----@param h Kocos.Handle
----@param addrinfo Kocos.net.addrinfo
----@return string?, string?
-function handles.connect(h, addrinfo)
-	if h.state ~= "init" then
-		return nil, errno.EISCONN
-	end
-	return h.handle("connect", addrinfo)
-end
-
----@param h Kocos.Handle
----@param addrinfo Kocos.net.addrinfo
----@return boolean, string?
-function handles.listen(h, addrinfo)
-	if h.state ~= "init" then
-		return false, errno.EISCONN
-	end
-	return h.handle("listen", addrinfo)
-end
-
----@param h Kocos.Handle
----@return Kocos.Handle?, string?
-function handles.accept(h)
-	if h.state ~= "listening" then
-		return nil, errno.EBADF
-	end
-	return h.handle("accept")
-end
-
----@return Kocos.Handle reader, Kocos.Handle writer
-function handles.mkpipe()
-	---@type string?
-	local sharedBuf = ""
-
-	---@type Kocos.Handle, Kocos.Handle
-	local r, w
-	r = {
-		type = "pipe",
-		state = "reader",
-		rc = 1,
-		flags = 0,
-		handle = function(act, len)
-			if act == "read" then
-				if not sharedBuf then
-					return nil, errno.EPIPE
-				end
-				if len > #sharedBuf then len = #sharedBuf end
-				len = math.floor(len)
-				local chunk = sharedBuf:sub(1, len)
-				sharedBuf = sharedBuf:sub(len+1)
-				return chunk
-			end
-			if act == "close" then
-				sharedBuf = nil
-				return true
-			end
-			return nil, errno.EBADF
-		end,
-	}
-	w = {
-		type = "pipe",
-		state = "writer",
-		rc = 1,
-		flags = 0,
-		handle = function(act, data)
-			if act == "write" then
-				if not sharedBuf then
-					return nil, errno.EPIPE
-				end
-				sharedBuf = sharedBuf .. data
-				-- for async I/O
-				handles.notify(w, Kocos.fs.EV_DATAREADY, #data)
-				return true
-			end
-			if act == "close" then
-				sharedBuf = nil
-				return true
-			end
-			return nil, errno.EBADF
-		end,
-	}
-	return r, w
-end
-
----@param interval number
----@param func function
----@param times? integer
----@return Kocos.Handle
-function handles.mktimer(interval, func, times)
-	local t = Kocos.event.timer(interval, func, times)
-
-	---@type Kocos.Handle
-	return {
-		type = "timer",
-		handle = function(a)
-			if a == "close" then
-				Kocos.event.cancel(t)
-			end
-			return nil, errno.EBADF
-		end,
-		rc = 1,
-		state = "",
-		flags = 0,
-	}
-end
-
-Kocos.handles = handles
-Kocos.printk(Kocos.L_DEBUG, "handle subsystem loaded")
- local process = Kocos.process
-local errno = Kocos.errno
-local handles = Kocos.handles
-
----@class Kocos.syscalls
-local syscalls = {}
-
----@param path string
----@param mode "r"|"a"|"w"
-function syscalls.open(path, mode)
-	-- TODO: validate permissions
-
-	if type(path) ~= "string" or type(mode) ~= "string" then
-		return nil, errno.EINVAL
-	end
-
-	if mode ~= "r" and mode ~= "w" and mode ~= "a" then
-		return nil, errno.EINVAL
-	end
-
-	path = process.resolve(process.current, path)
-
-	local file, err = Kocos.fs.open(path, mode)
-	if not file then return nil, err end
-
-	return process.moveResource(process.current, file)
-end
-
----@param f Kocos.Handle
-function syscalls.openstream(f)
-	if type(f) ~= "table" then
-		return nil, errno.EINVAL
-	end
-	local file = table.copy(f)
-	file.flags = math.floor(file.flags or 0)
-	local proc = process.current
-	local h = file.handle
-	file.handle = function(...)
-		local t = {process.pcall(proc, h, ...)}
-		if t[1] then
-			return table.unpack(t, 2)
-		end
-		return nil, t[2]
-	end
-
-	return process.moveResource(process.current, file)
-end
-
----@param path string
----@param perms integer
----@return boolean?, string?
-function syscalls.touch(path, perms)
-	if type(path) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	if type(perms) ~= "number" then
-		return nil, errno.EINVAL
-	end
-	perms = math.floor(perms)
-	path = process.resolve(process.current, path)
-	return Kocos.fs.touch(path, perms, process.current.uid, process.current.gid)
-end
-
----@param path string
----@param perms integer
----@return boolean?, string?
-function syscalls.mkdir(path, perms)
-	if type(path) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	if type(perms) ~= "number" then
-		return nil, errno.EINVAL
-	end
-	perms = math.floor(perms)
-	path = process.resolve(process.current, path)
-	return Kocos.fs.mkdir(path, perms, process.current.uid, process.current.gid)
-end
-
----@param path string
----@return boolean?, string?
-function syscalls.remove(path)
-	if type(path) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	path = process.resolve(process.current, path)
-	return Kocos.fs.remove(path)
-end
-
----@param path string
----@param addr string
----@return boolean?, string?
-function syscalls.mountDev(path, addr)
-	if type(path) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	if type(addr) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	path = process.resolve(process.current, path)
-	if Kocos.fs.ftype(path) ~= Kocos.fs.FTYPE_DIR then
-		return nil, errno.ENOTDIR
-	end
-	local parentmnt, p = Kocos.fs.resolve(path, true)
-	local dev = component.proxy(addr)
-	if not dev then return nil, errno.ENODEV end
-	local mnt = Kocos.fs.mount(dev)
-	if not mnt then
-		return nil, errno.ENODRIVER
-	end
-	parentmnt.submounts[p] = mnt
-	return true
-end
-
----@param path string
----@return boolean, string?
-function syscalls.unmount(path)
-	if type(path) ~= "string" then
-		return false, errno.EINVAL
-	end
-	path = process.resolve(process.current, path)
-	local parentmnt, p = Kocos.fs.resolve(path, true)
-	local mnt = parentmnt.submounts[p]
-	if not mnt then
-		return false, errno.EISDIR
-	end
-	Kocos.fs.unmount(mnt)
-	parentmnt.submounts[p] = nil
-	return true
-end
-
---- Returns a map of paths obtained from depth-first search to device addresses
-function syscalls.getMounts()
-	---@type table<string, string>
-	local t = {}
-
-	---@type string[]
-	local queue = {"/"}
-
-	while true do
-		local p = table.remove(queue, 1)
-		if not p then break end
-
-		local dev = Kocos.fs.resolve(p)
-		if not t[dev.dev.address] then
-			t[dev.dev.address] = p
-			for mp in pairs(dev.submounts) do
-				table.insert(queue, Kocos.fs.join(p, mp))
-			end
-		end
-	end
-
-	return t
-end
-
----@param fd integer
----@param length integer
----@return string?, string?
-function syscalls.read(fd, length)
-	if type(fd) ~= "number" then
-		return nil, errno.EINVAL
-	end
-	if type(length) ~= "number" then
-		return nil, errno.EINVAL
-	end
-	local proc = process.current
-	local f = proc.fds[fd]
-	if f then
-		return handles.read(f, length)
-	end
-	return nil, errno.EBADF
-end
-
----@param fd integer
----@param data string
----@return boolean?, string?
-function syscalls.write(fd, data)
-	if type(fd) ~= "number" then
-		return nil, errno.EINVAL
-	end
-	if type(data) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	local proc = process.current
-	local f = proc.fds[fd]
-	if f then
-		return handles.write(f, data)
-	end
-	return nil, errno.EBADF
-end
-
----@param fd integer
----@return boolean?, string?
-function syscalls.close(fd)
-	if type(fd) ~= "number" then
-		return nil, errno.EINVAL
-	end
-	local proc = process.current
-	local f = proc.fds[fd]
-	if not f then return nil, errno.EBADF end
-	proc.fds[fd] = nil
-	handles.close(f)
-	return true
-end
-
----@param fd integer
----@param whence seekwhence
----@param off integer
----@return integer?, string?
-function syscalls.seek(fd, whence, off)
-	if type(fd) ~= "number" then
-		return nil, errno.EINVAL
-	end
-	local proc = process.current
-	local f = proc.fds[fd]
-	if not f then return nil, errno.EBADF end
-	return handles.seek(f, whence, off)
-end
-
----@param fd integer
----@param action string
----@return ...
-function syscalls.ioctl(fd, action, ...)
-	if type(fd) ~= "number" then
-		return nil, errno.EINVAL
-	end
-	local proc = process.current
-	local f = proc.fds[fd]
-	if not f then return nil, errno.EBADF end
-	return handles.ioctl(f, action, ...)
-end
-
----@param domain string
----@param protocol string
----@param host string
---- Either a name of an application-layer protocol or the port number
----@param service? string|integer
----@return Kocos.net.addrinfo?, string?
-function syscalls.getaddrinfo(domain, protocol, host, service)
-	if type(domain) ~= "string" then
-		return nil, errno.EINVAL
+function Kocos.tickProcesses()
+	for _, proc in pairs(Kocos.processes) do
+		Kocos.resumeProcess(proc)
 	end
-	if type(protocol) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	if type(host) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	if type(service) ~= "string" and type(service) ~= "number" and type(service) ~= "nil" then
-		return nil, errno.EINVAL
-	end
-	return Kocos.net.getaddrinfo(domain, protocol, host, service)
-end
-
----@param domain string
----@param socktype string
----@param protocol? string
----@return integer?, string?
-function syscalls.socket(domain, socktype, protocol)
-	if type(domain) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	if type(socktype) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	if type(protocol) ~= "string" and type(protocol) ~= "nil" then
-		return nil, errno.EINVAL
-	end
-	local sock, err = Kocos.net.socket(domain, socktype, protocol)
-	if not sock then return nil, err end
-
-	return Kocos.process.moveResource(Kocos.process.current, sock)
-end
-
----@param fd integer
-function syscalls.accept(fd)
-	local res = process.current.fds[fd]
-	if not res then return nil, errno.EBADF end
-	if res.type ~= "socket" and res.type ~= "device" then return nil, errno.ENOTSOCK end
-
-	local client, err = handles.accept(res)
-	if not client then return nil, err end
-
-	return Kocos.process.moveResource(Kocos.process.current, client)
-end
-
----@param fd integer
----@param addrinfo Kocos.net.addrinfo
-function syscalls.connect(fd, addrinfo)
-	-- prevents some security issues
-	setmetatable(addrinfo, nil)
-
-	local res = process.current.fds[fd]
-	if not res then return nil, errno.EBADF end
-	if res.type ~= "socket" and res.type ~= "device" then return nil, errno.ENOTSOCK end
-
-	return handles.connect(res, addrinfo)
-end
-
----@param fd integer
----@param addrinfo Kocos.net.addrinfo
-function syscalls.listen(fd, addrinfo)
-	-- prevents some security issues
-	setmetatable(addrinfo, nil)
-
-	local res = process.current.fds[fd]
-	if not res then return nil, errno.EBADF end
-	if res.type ~= "socket" and res.type ~= "device" then return nil, errno.ENOTSOCK end
-
-	return handles.listen(res, addrinfo)
-end
-
----@return integer?, string?
-function syscalls.dup(fd)
-	local res = process.current.fds[fd]
-	if not res then return nil, errno.EBADF end
-	local f = process.moveResource(process.current, res)
-	res.rc = res.rc + 1
-	return f
-end
-
----@return boolean, string?
-function syscalls.dup2(fd, newFd)
-	local res = process.current.fds[fd]
-	if not res then return false, errno.EBADF end
-	if process.current.fds[newFd] then return false, errno.EEXIST end
-	process.current.fds[newFd] = res
-	res.rc = res.rc + 1
-	return true
-end
-
-function syscalls.fcntl(fd, action, ...)
-	if type(fd) ~= "number" then
-		return nil, errno.EINVAL
-	end
-	local proc = process.current
-	local f = proc.fds[fd]
-	if not f then return nil, errno.EBADF end
-	if action == Kocos.fs.F_SETCB then
-		---@type function?
-		local listener = ...
-		if type(listener) ~= "function" and type(listener) ~= "nil" then
-			return nil, errno.EINVAL
-		end
-		if listener then
-			local fun = listener
-			-- sandboxing the listener
-			listener = function(...)
-				process.pcall(proc, fun, ...)
-			end
-		end
-		Kocos.handles.setlistener(f, listener)
-		return true
-	end
-	if action == Kocos.fs.F_GETFL then
-		return f.flags
-	end
-	if action == Kocos.fs.F_SETFL then
-		---@type integer
-		local flags = ...
-		if type(flags) ~= "number" then
-			return nil, errno.EINVAL
-		end
-		flags = math.abs(math.floor(flags))
-		f.flags = flags
-		return true
-	end
-	if action == Kocos.fs.F_NOTIF then
-		---@type string
-		local ev = ...
-		if type(ev) ~= "string" then
-			return nil, errno.EINVAL
-		end
-		handles.notify(f, ...)
-		return true
-	end
-	if action == "F_GETTYPE" then
-		return f.type
-	end
-	if action == "F_GETSTATE" then
-		return f.state
-	end
-	return nil, errno.EINVAL
-end
-
----@param path string
----@return string[]?, string?
-function syscalls.list(path)
-	path = process.resolve(process.current, path)
-	return Kocos.fs.list(path)
-end
-
----@param path string
----@return Kocos.fs.stat?, string?
-function syscalls.stat(path)
-	path = process.resolve(process.current, path)
-	return Kocos.fs.stat(path)
-end
-
----@param path string
----@return Kocos.fs.ftype?, string?
-function syscalls.ftype(path)
-	path = process.resolve(process.current, path)
-	return Kocos.fs.ftype(path)
-end
-
----@param path string
----@return boolean?, string?
-function syscalls.exists(path)
-	path = process.resolve(process.current, path)
-
-	return Kocos.fs.exists(path, true)
-end
-
----@param path string
----@return string
-function syscalls.absolutepath(path)
-	return Kocos.fs.fromRoot(process.resolve(process.current, path), process.current.root)
-end
-
----@param path string
----@return string
-function syscalls.canonical(path)
-	return Kocos.fs.canonical(path)
-end
-
----@param path string
----@return string
-function syscalls.parentPath(path)
-	return (Kocos.fs.parentPath(path))
-end
-
----@param s string
----@vararg string
----@return string
-function syscalls.join(s, ...)
-	return Kocos.fs.join(process.resolve(process.current, s), ...)
-end
-
----@param path string
----@return boolean?, string?
-function syscalls.validlink(path)
-	path = process.resolve(process.current, path)
-
-	return Kocos.fs.exists(path)
-end
-
----@param f function
----@return integer Returns pid of new process
-function syscalls.fork(f)
-	local child = process.fork(process.current, f)
-	--process.resume(child) -- give child a chance to shine
-	return child.pid
-end
-
-function syscalls.environ()
-	-- mutating it is fine
-	return process.current.env
-end
-
-function syscalls.argv()
-	-- mutating it is technically fine but please don't
-	return process.current.args
-end
-
-function syscalls.sleep(time)
-	if type(time) ~= "number" then
-		return nil, errno.EINVAL
-	end
-
-	local deadline = computer.uptime() + time
-	process.blockUntil(process.current, function()
-		return computer.uptime() >= deadline
-	end)
-	return true
-end
-
----@return number
-function syscalls.uptime()
-	return computer.uptime()
-end
-
-function syscalls.sync()
-	Kocos.fs.sync()
-	return true
-end
-
----@param path string
----@param argv string[]?
----@param env table<string, string>?
----@param namespace _G?
----@return boolean, string?
-function syscalls.exec(path, argv, env, namespace)
-	if type(path) ~= "string" then
-		return false, errno.EINVAL
-	end
-
-	local cur = process.current
-
-	argv = argv or {[0] = path}
-	argv[0] = argv[0] or path
-	env = env or table.copy(cur.env)
-	namespace = namespace or cur.namespace
-
-	-- TODO: check read + exec perms
-
-	local ok, err = process.exec(cur, path, argv, env, namespace)
-	if not ok then return false, err end
-
-	-- TODO: consider some way to resume it instantly
-	--process.resume(cur) -- deadlocks?
-	coroutine.yield() -- and, its gone.
-	return true
-end
-
----@param module string
----@return string?, string?
-function syscalls.readmod(module)
-	if type(module) ~= "string" then return nil, errno.EINVAL end
-
-	local mod = process.readmod(process.current, module)
-	if mod then
-		return mod.data, mod.src
-	end
-	return nil, errno.ENOENT
-end
-
----@param filter? string
----@param exact? boolean
-function syscalls.clist(filter, exact)
-	---@type table<string, string>
-	local t = {}
-	for addr, type in component.list(filter, exact) do
-		t[addr] = type
-	end
-	local k
-	setmetatable(t, {
-		__call = function()
-			k = next(t, k)
-			return k, t[k]
-		end,
-	})
-	return t
-end
-
----@param shortform string
----@param filter? string
----@param exact? boolean
----@return string?, string?
-function syscalls.caddress(shortform, filter, exact)
-	if type(shortform) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	local l, err = syscalls.clist(filter, exact)
-	if err then return nil, err end
-	for addr in l do
-		if string.startswith(addr, shortform) then
-			return addr
-		end
-	end
-	return nil, errno.ENODEV
-end
-
----@param dev Kocos.vdevice
-function syscalls.cadd(dev)
-	if not process.isRoot(process.current) then
-		return false, errno.EPERM
-	end
-	if component.type(dev.address) then
-		return false, errno.EADDRINUSE
-	end
-	component.add(dev)
-	return true
-end
-
----@param address string
-function syscalls.cremove(address)
-	if not process.isRoot(process.current) then
-		return false, errno.EPERM
-	end
-	if not component.isVirtual(address) then
-		return false, errno.ENODEV
-	end
-	component.remove(address)
-	return true
-end
-
----@param image Kocos.ramfs.node
----@param label string?
----@param readonly boolean
----@param addr string?
----@return string?, string?
-function syscalls.cramfs(image, label, readonly, addr)
-	if not process.isRoot(process.current) then
-		return nil, errno.EPERM
-	end
-	return Kocos.addRamfsComponent({
-		label = label,
-		readonly = readonly,
-		fds = {},
-		image = image,
-	}, addr)
-end
-
-function syscalls.cmethods(addr)
-	return component.methods(addr)
-end
-
-function syscalls.cinvoke(addr, method, ...)
-	return component.invoke(addr, method, ...)
-end
-
----@return Kocos.device?
-function syscalls.cproxy(addr)
-	return component.proxy(addr)
-end
-
----@return Kocos.device?
-function syscalls.cprimary(type)
-	return component.getPrimary(type)
-end
-
-function syscalls.cfields(addr)
-	return component.fields(addr)
-end
-
-function syscalls.cdoc(addr, method)
-	return component.doc(addr, method)
-end
-
-function syscalls.cslot(addr)
-	return component.slot(addr)
 end
 
-function syscalls.ctype(addr)
-	return component.type(addr)
-end
-
----@param pid integer
----@return integer
-function syscalls.waitpid(pid)
-	local proc = process.allProcs[pid]
-	if not proc then return 0 end
-	process.resume(proc)
-	-- theoretically a signal can fuck us up however we do not care
-	process.blockUntil(process.current, function()
-		return not process.isRunning(proc)
-	end)
-	process.close(proc)
-	return proc.exitcode
-end
-
----@param pid integer
----@param condition Kocos.process.condition
----@return boolean, string?
-function syscalls.blockUntil(pid, condition)
-	local p = process.allProcs[pid]
-	if not p then return false, errno.ESRCH end
-	if type(condition) ~= "function" then return false, errno.EINVAL end
-
-	-- optimization
-	if condition() then return true end
-
-	local cur = process.current
-	if cur.uid ~= 0 and not process.isDecendantOf(p, cur) then
-		return nil, errno.EPERM
-	end
-
-	process.blockUntil(p, function()
-		local ok, s = process.pcall(cur, condition)
-		if not ok then return false end
-		return s
-	end)
-	return true
-end
-
----@param dir string
----@return string?, string?
-function syscalls.chdir(dir)
-	if type(dir) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	if dir == "." then return process.current.cwd end
-	dir = process.resolve(process.current, dir)
-	dir = Kocos.fs.fromRoot(dir, process.current.root)
-	process.current.cwd = dir
-	return dir
-end
-
----@param dir string
----@return string?, string?
-function syscalls.chroot(dir)
-	if type(dir) ~= "string" then
-		return nil, errno.EINVAL
-	end
-	if dir == "." then return process.current.cwd end
-	dir = process.resolve(process.current, dir)
-	process.current.root = dir
-	return dir
-end
-
----@class Kocos.sysinfoResult
----@field kernel string
----@field os string
----@field bootAddress string
----@field rootAddress string
----@field tmpAddress string
----@field hostname string
----@field memtotal integer
----@field memfree integer
----@field kernelPID integer
----@field initPID integer
----@field energy number
----@field maxEnergy number
-
-function syscalls.sysinfo()
-	---@type Kocos.sysinfoResult
-	return {
-		kernel = _KVERSION,
-		os = _OSVERSION,
-		bootAddress = computer.getBootAddress(),
-		rootAddress = Kocos.fs.root.dev.address,
-		tmpAddress = computer.tmpAddress(),
-		memfree = computer.freeMemory(),
-		memtotal = computer.totalMemory(),
-		hostname = Kocos.hostname,
-		kernelPID = process.root.pid,
-		initPID = process.init.pid,
-		energy = computer.energy(),
-		maxEnergy = computer.maxEnergy(),
-	}
-end
-
+---@param level? integer
+function syscalls.getpid(level)
+	level = level or 0
 
----@param addr? string
-function syscalls.chboot(addr)
-	if addr then
-		if type(addr) ~= "string" then
-			return nil, errno.EINVAL
-		end
-		if process.current.euid ~= 0 then
-			return nil, errno.EPERM
-		end
-		computer.setBootAddress(addr)
-	end
-	return computer.getBootAddress()
-end
-
----@param addr string
----@return boolean, string?
-function syscalls.chsysroot(addr)
-	if type(addr) ~= "string" then
-		return false, errno.EINVAL
-	end
-	if process.current.euid ~= 0 then
-		return false, errno.EPERM
-	end
-	local proxy = component.proxy(addr)
-	if not proxy then return false, errno.ENODEV end
-	local newRoot = Kocos.fs.mount(proxy)
-	if not newRoot then return false, errno.ENODRIVER end
-	local oldRoot = Kocos.fs.root
-	Kocos.fs.root = newRoot
-	if oldRoot then Kocos.fs.unmount(oldRoot) end
-	return true
-end
-
----@param hostname string?
----@return string?, string?
-function syscalls.hostname(hostname)
-	if hostname then
-		if process.current.euid ~= 0 then
-			return nil, errno.EACCESS
-		end
-		Kocos.hostname = hostname
-	end
-	return Kocos.hostname
-end
-
----@return string[]
-function syscalls.syscalls()
-	local s = {}
-	for k in pairs(syscalls) do table.insert(s, k) end
-	return s
-end
-
----@param daemon string
----@param callback fun(cpid: integer, ...): ...
-function syscalls.registerDaemon(daemon, callback)
-	local d = process.daemons[daemon]
-	if d then return nil, errno.EADDRINUSE end
-	if process.current.daemon then
-		return nil, errno.EALREADY
-	end
-	process.daemons[daemon] = {
-		proc = process.current,
-		callback = callback,
-	}
-	process.current.daemon = daemon
-	return true
-end
-
----@param daemon string
----@return integer?, string?
-function syscalls.getDaemonPid(daemon)
-	local d = process.daemons[daemon]
-	if not d then return nil, errno.ESRCH end
-	return d.proc.pid
-end
-
----@return string[]
-function syscalls.listDaemons()
-	local daemons = {}
-	for addr in pairs(process.daemons) do
-		table.insert(daemons, addr)
-	end
-	return daemons
+	local proc = Kocos.procStack[#Kocos.procStack - level]
+	if not proc then return nil, Kocos.ESRCH end
+	return proc.pid
 end
 
----@param daemon string
----@return ...
-function syscalls.invokeDaemon(daemon, ...)
-	local d = process.daemons[daemon]
-	if not d then return nil, errno.ESRCH end
-	local t = {process.pcall(d.proc, d.callback, process.current.pid, ...)}
-	if t[1] then
-		return table.unpack(t, 2)
-	end
-	return nil, table.unpack(t, 2)
+function syscalls.proclocal()
+	return Kocos.currentProcess().proclocal
 end
 
 ---@return integer[]
 function syscalls.getprocs()
 	local pids = {}
-	for pid in pairs(process.allProcs) do
+	for pid in pairs(Kocos.processes) do
 		table.insert(pids, pid)
 	end
 	return pids
 end
 
----@param pid integer
-function syscalls.isproot(pid)
-	local p = process.allProcs[pid]
-	if not p then return false end
-	return process.isRoot(p)
-end
-
-function syscalls.getpid()
-	return process.current.pid
-end
-
 function syscalls.getuid()
-	return process.current.uid
+	return Kocos.currentProcess().uid
 end
 
 function syscalls.getgid()
-	return process.current.gid
+	return Kocos.currentProcess().gid
+end
+ -- Virtual filesystem.
+-- Also handles the open/read/write/close/etc. syscalls
+
+Kocos.P_EXECUTABLE = 1
+Kocos.P_WRITABLE = 2
+Kocos.P_READABLE = 4
+Kocos.P_MASK = 7
+Kocos.P_GROUPSHIFT = 3
+Kocos.P_OWNERSHIFT = 6
+
+function Kocos.permCheck(permBits, bit, owned, grouped)
+	if owned then
+		permBits = permBits >> Kocos.P_OWNERSHIFT
+	elseif grouped then
+		permBits = permBits >> Kocos.P_GROUPSHIFT
+	end
+	permBits = permBits & Kocos.P_MASK
+	return (permBits & bit) ~= 0
 end
 
-function syscalls.geteuid()
-	return process.current.euid
+---@class Kocos.dev
+---@field address string
+---@field type string
+---@field slot integer
+
+---@class Kocos.blockdev: Kocos.dev
+---@field type "drive"
+---@field getCapacity fun(): integer
+---@field getSectorSize fun(): integer
+---@field getPlatterCount fun(): integer
+---@field readSector fun(sector: integer): string
+---@field writeSector fun(sector: integer, data: string)
+---@field readByte fun(index: integer): integer
+---@field writeByte fun(index: integer, byte: integer)
+
+---@class Kocos.partdev: Kocos.blockdev
+---@field type "partition"
+---@field getStorageDevice fun(): string
+---@field isReadonly fun(): string
+---@field getPartitionType fun(): string
+---@field getSectorOffset fun(): integer
+
+---@param blockdev Kocos.blockdev
+---@param partaddr string
+---@param sectorOff integer
+---@param capacity integer
+function Kocos.mkblockpart(blockdev, partaddr, sectorOff, capacity)
+	-- TODO: register blockdev
 end
 
-function syscalls.getegid()
-	return process.current.egid
-end
-
----@param uid integer
----@param pid? integer
----@return boolean, string?
-function syscalls.setuid(uid, pid)
-	local cur = process.current
-	local target = process.allProcs[pid or cur.pid]
-	if not target then return false, errno.ESRCH end
-	if not process.isDecendantOf(target, cur) then
-		return false, errno.EPERM
-	end
-	if uid == 0 and not process.isRoot(cur) then
-		return false, errno.EPERM
-	end
-	target.uid = uid
-	return true
-end
-
---- Set the tracer to process at [pid]
----@param pid integer
----@return boolean, string?
-function syscalls.strace(pid)
-	local p = process.allProcs[pid]
-	if not p then return false, errno.ESRCH end
-	if not process.isDecendantOf(process.current, p) then
-		return false, errno.EPERM
-	end
-	process.current.tracer = p
-	return true
-end
-
----@param gid integer
----@param pid? integer
----@return boolean, string?
-function syscalls.setgid(gid, pid)
-	local cur = process.current
-	local target = process.allProcs[pid or cur.pid]
-	if not target then return false, errno.ESRCH end
-	if not process.isDecendantOf(target, cur) then
-		return false, errno.EPERM
-	end
-	if gid == 0 and not process.isRoot(cur) then
-		return false, errno.EPERM
-	end
-	target.gid = gid
-	return true
-end
-
----@param uid integer
----@param pid? integer
----@return boolean, string?
-function syscalls.seteuid(uid, pid)
-	local cur = process.current
-	local target = process.allProcs[pid or cur.pid]
-	if not target then return false, errno.ESRCH end
-	if not process.isDecendantOf(target, cur) and not process.isRoot(cur) then
-		return false, errno.EPERM
-	end
-	if uid == 0 and not process.isRoot(cur) then
-		target.euid = target.uid
-		return true
-	end
-	target.euid = uid
-	return true
-end
-
----@param gid integer
----@param pid? integer
----@return boolean, string?
-function syscalls.setegid(gid, pid)
-	local cur = process.current
-	local target = process.allProcs[pid or cur.pid]
-	if not target then return false, errno.ESRCH end
-	if not process.isDecendantOf(target, cur) and not process.isRoot(cur) then
-		return false, errno.EPERM
-	end
-	if gid == 0 and not process.isRoot(cur) then
-		target.egid = target.gid
-		return true
-	end
-	target.egid = gid
-	return true
-end
-
----@class Kocos.process.info
----@field argv? string[]
----@field environ? table<string, string>
----@field uid? integer
----@field euid? integer
----@field gid? integer
----@field egid? integer
----@field parent? integer
----@field driver? boolean
----@field daemon? string
----@field tracer? integer
----@field exitcode? integer
----@field cwd? string
----@field exe? string
----@field namespace? _G
----@field children? integer[]
----@field signals? string[]
-
----@param pid integer
----@vararg "args"|"env"|"uid"|"gid"|"parent"|"tree"|"state"|"namespace"|"signals"
----@return Kocos.process.info?, string?
-function syscalls.getprocinfo(pid, ...)
-	local proc = process.allProcs[pid]
-	if not proc then return nil, errno.ESRCH end
-	local isTrusted = process.current.euid == 0 or process.isDecendantOf(proc, process.current)
-	---@type Kocos.process.info
-	local info = {}
-	local vlen = select("#", ...)
-	for i=1, vlen do
-		local v = select(i, ...)
-		if v == "args" then
-			info.argv = table.copy(proc.args)
-		elseif v == "env" then
-			info.environ = table.copy(proc.env)
-		elseif v == "uid" then
-			info.uid = proc.uid
-			info.euid = proc.euid
-		elseif v == "gid" then
-			info.gid = proc.gid
-			info.egid = proc.egid
-		elseif v == "parent" then
-			if proc.parent then info.parent = proc.parent.pid end
-		elseif v == "tree" then
-			if proc.parent then info.parent = proc.parent.pid end
-			info.children = {}
-			for cpid in pairs(proc.children) do
-				table.insert(info.children, cpid)
-			end
-		elseif v == "state" then
-			if proc.parent then info.parent = proc.parent.pid end
-			if proc.tracer then info.tracer = proc.tracer.pid end
-			info.driver = not not proc.driver
-			info.exitcode = proc.exitcode
-			info.exe = proc.exe
-			info.cwd = proc.cwd
-		elseif v == "namespace" then
-			if isTrusted then info.namespace = proc.namespace end
-		elseif v == "signals" then
-			info.signals = {}
-			for sig in pairs(proc.signals) do
-				table.insert(info.signals, sig)
-			end
+---@param blockdev Kocos.blockdev
+---@param partitions string[]
+function Kocos.retainpartof(blockdev, partitions)
+	local allparts = {}
+	for addr in component.list("partition", true) do
+		---@type Kocos.partdev
+		local part = component.proxy(addr)
+		if part.getStorageDevice() == blockdev.address then
+			table.insert(allparts, addr)
 		end
 	end
-	return info
-end
-
-function syscalls.proclocal()
-	return process.current.proclocal
-end
-
----@param pid integer
----@param signal string
-function syscalls.kill(pid, signal, ...)
-	local cur = process.current
-	local target = process.allProcs[pid]
-	if not target then return nil, errno.ESRCH end
-	-- signals that are just not sendable even by root,
-	-- cuz their meaning would be violated
-	if signal == "SIGTRAP" then return nil, errno.EPERM end
-	if signal == "SIGCHLD" then return nil, errno.EPERM end
-	if signal == "SIGABRT" then return nil, errno.EPERM end
-	local allowed = process.isRoot(cur) or cur.uid == target.uid or cur.euid == target.euid or cur.euid == target.uid
-	if not allowed then
-		return nil, errno.EACCESS
-	end
-	process.raise(target, signal, ...)
-	return true
-end
-
----@param sig string
----@param f function
-function syscalls.signal(sig, f)
-	process.current.signals[sig] = f
-	return true
-end
-
-function syscalls.abort()
-	process.raise(process.current, process.SIGABRT)
-end
-
----@param code? integer
-function syscalls.exit(code)
-	code = code or 0
-	process.terminate(process.current, code)
-	return 0
-end
-
----@param driver? function
----@return boolean?, string?
-function syscalls.mkdriver(driver)
-	local cur = process.current
-	if cur.euid ~= 0 then
-		return nil, errno.EPERM
-	end
-	if cur.driver then
-		Kocos.removeDriver(driver)
-	end
-	cur.driver = driver
-	Kocos.addDriver(driver)
-	return true
-end
-
----@param listener? function
----@return boolean?, string?
-function syscalls.mklistener(listener)
-	local cur = process.current
-	if cur.euid ~= 0 then
-		return nil, errno.EPERM
-	end
-	if cur.ev_listener then
-		Kocos.event.forget(cur.ev_listener)
-	end
-	cur.ev_listener = listener
-	Kocos.event.listen(listener)
-	return true
-end
-
-function syscalls.errnos()
-	return table.copy(Kocos.errno)
-end
-
----@param pid integer
----@return boolean, string?
-function syscalls.resume(pid)
-	local proc = process.allProcs[pid]
-	if not proc then return false, errno.ESRCH end
-	process.resume(proc)
-	return true
-end
-
----@param desiredTime? number
-function syscalls.setexectime(desiredTime)
-	process.current.desiredExecTime = desiredTime
-	return true
-end
-
-function syscalls.mkpipe()
-	local proc = process.current
-	local reader, writer = Kocos.handles.mkpipe()
-	return process.moveResource(proc, reader), process.moveResource(proc, writer)
-end
-
-function syscalls.mktimer(interval, func, times)
-	local proc = process.current
-	interval = interval or 1
-	func = func or function()
-		process.raise(proc, process.SIGALRM)
-	end
-	times = times or 1
-	if type(interval) ~= "number" then
-		return nil, errno.EINVAL
-	end
-	if type(func) ~= "function" then
-		return nil, errno.EINVAL
-	end
-	if type(times) ~= "number" then
-		return nil, errno.EINVAL
-	end
-
-	local h = Kocos.handles.mktimer(interval, function()
-		process.pcall(proc, func)
-	end, times)
-	return process.moveResource(proc, h)
-end
-
-Kocos.syscalls = syscalls
-
----@diagnostic disable: lowercase-global
----@param sysname string
----@return ...
-function syscall(sysname, ...)
-	local cur = process.current
-
-	if computer.uptime() >= process.execDeadline then
-		coroutine.yield()
-	end
-
-	if process.isDead(cur.pid) then return nil, errno.ESRCH end
-	if not syscalls[sysname] then return nil, errno.ENOSYS end
-	if cur.tracer then
-		-- inform the tracer
-		process.raise(cur.tracer, process.SIGSYSC, cur.pid, sysname, {...})
-	end
-	local t = {pcall(syscalls[sysname], ...)}
-
-	if cur.tracer then
-		-- inform the tracer
-		local ret = t[1] and {table.unpack(t, 2)} or {nil, t[2]}
-		process.raise(cur.tracer, process.SIGSYSR, cur.pid, sysname, {...}, ret)
-	end
-
-	if not process.isRunning(process.current) then
-		coroutine.yield() -- we're dead
-	end
-
-	if t[1] then
-		return table.unpack(t, 2)
-	end
-	return nil, t[2]
-end
- Kocos.printkf(Kocos.L_INFO, "Booting %s...", _KVERSION)
-
-Kocos.printkf(Kocos.L_DEBUG, "Detecting hardware...")
-for addr, type in component.list() do
-	Kocos.printkf(Kocos.L_DEBUG, "%s %s", addr, type)
-end
-
--- At this point we're supposed to mount the bootfs, either ramfs image or actual root
-Kocos.printk(Kocos.L_INFO, "mounting boot filesystem at /")
-
-local rootDev
-
-if Kocos.args.ramfs then
-	rootDev = Kocos.addRamfsComponent(Kocos.args.ramfs, "ramfs")
-	Kocos.printk(Kocos.L_DEBUG, "mounting as ramfs tmp root")
-else
-	rootDev = Kocos.args.root or computer.getBootAddress()
-	Kocos.printk(Kocos.L_DEBUG, "mounting as managedfs true root")
-end
-
-do
-	assert(rootDev, "missing root device")
-	assert(Kocos.syscalls.chsysroot(rootDev))
-end
-
-local freeMem = computer.freeMemory()
-local totalMem = computer.totalMemory()
-
-Kocos.printkf(Kocos.L_INFO, "Free Memory: %s / %s", string.memformat(freeMem), string.memformat(totalMem))
-
----@alias Kocos.shutdownType "halt"|"poweroff"|"reboot"
----@type Kocos.shutdownType?
-Kocos.shutdown = nil
-
-if freeMem < 64*1024 then
-	Kocos.printkf(Kocos.L_WARN, "FREE MEMORY IS BELOW 64KiB!!!")
-end
-
-local function tick()
-	if Kocos.shutdown then
-		Kocos.printkf(Kocos.L_INFO, "Attempting %s", Kocos.shutdown)
-		Kocos.poweroff(Kocos.shutdown == "reboot")
-		return
-	end
-	local interval = Kocos.args.pollInterval or 0
-	local percent = computer.energy() / computer.maxEnergy()
-	if percent < 0.5 then
-		interval = Kocos.args.midBatteryPollInterval or 0.1 -- idle longer to save battery
-	end
-	if percent < 0.1 then
-		interval = Kocos.args.midBatteryPollInterval or 0.2 -- idle way longer to save battery
-	end
-	Kocos.event.pull(interval)
-	Kocos.process.run()
-end
-
-local initPaths = {
-	-- init process
-	"/sbin/init",
-	"/bin/init",
-	-- login???
-	"/sbin/login",
-	"/bin/login",
-	-- shell???
-	"/sbin/sh",
-	"/bin/sh",
-}
-
--- classic fork() exec()
-local initProc = Kocos.process.fork(Kocos.process.root, function()
-	Kocos.process.init.executionDeadline = math.huge
-	for _, path in ipairs(initPaths) do
-		if Kocos.syscalls.exists(path) then
-			Kocos.printkf(Kocos.L_INFO, "Running %s...", path)
-			assert(Kocos.syscalls.exec(path))
+	for _, addr in ipairs(allparts) do
+		if not table.contains(partitions, addr) then
+			component.remove(addr)
 		end
 	end
-	Kocos.panickf("COULD NOT FIND INIT PROGRAM!\nSearched: %s\n", table.concat(initPaths, "\n"))
-end)
-Kocos.process.init = initProc
-Kocos.process.resume(initProc)
-
-local function justDie()
-	pcall(computer.pullSignal, 2)
-	computer.shutdown(true)
 end
+
+---@class Kocos.mountState
+---@field device string
+---@field driver Kocos.module
+---@field state any
+---@field linkcache table<string, string>
+
+---@type table<string, Kocos.mountState>
+Kocos.mounts = {}
+
+---@param device string
+function Kocos.isMounted(device)
+	for _, s in pairs(Kocos.mounts) do
+		if s.device == device then return true end
+	end
+	return false
+end
+ Kocos.printk(Kocos.L_INFO, "Booting...")
 
 while true do
-	local ok, err = xpcall(tick, debug.traceback)
-	if not ok then
-		pcall(Kocos.panickf, "Tick error: %s\n", err)
-		justDie()
+	Kocos.tickProcesses()
+	local e = {Kocos.pull(0.05)}
+	if e[1] then
+		Kocos.printkf(Kocos.L_INFO, "ev: %s", table.concat(e, " "))
 	end
 end
  
