@@ -53,6 +53,9 @@ function perms.fromString(s)
 	return p
 end
 
+-- rwxrwxrwx
 perms.everything = 511
+-- rw-rw-rw-
+perms.default = 438
 
 return perms

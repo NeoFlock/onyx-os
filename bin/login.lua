@@ -75,29 +75,23 @@ local function setupScreen(screen)
 	term.hw[1] = screen
 
 	local c, err = k.fork(function()
-		local stdout = k.openstream {
-			flags = 0,
-			rc = 1,
-			state = "",
-			type = "device",
-			handle = function(req, ...)
-				if req == "write" then
-					term:write((...))
-					return true
-				end
-				if req == "read" then
-					return term:read((...))
-				end
-				if req == "ioctl" then
-					return term:ioctl(...)
-				end
-				return nil, errnos.EBADF
-			end,
-		}
-		assert(stdout == 0)
-		k.dup2(stdout, 1)
-		k.dup2(stdout, 2)
-		k.dup2(stdout, 3)
+		local stdin = k.opentty(function(req, ...)
+			if req == "write" then
+				term:write((...))
+				return true
+			end
+			if req == "read" then
+				return term:read((...))
+			end
+			if req == "ioctl" then
+				return term:ioctl(...)
+			end
+			return nil, errnos.EBADF
+		end)
+		assert(stdin == 0)
+		k.dup2(stdin, 1)
+		k.dup2(stdin, 2)
+		k.dup2(stdin, 3)
 		term:enableBlink()
 		assert(k.exec("/bin/prompt.lua"))
 	end)

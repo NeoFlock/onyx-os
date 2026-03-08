@@ -8,11 +8,11 @@ local ensureExists = {
 }
 for _, f in ipairs(ensureExists) do
 	if not k.exists(f) then
-		assert(k.mkdir(f, 2^16-1))
+		assert(k.mkdir(f, 511))
 	end
 end
 
 local tmpAddr = k.sysinfo().tmpAddress
 
 if tmpAddr then assert(k.mountDev("/tmp", tmpAddr)) end
-assert(k.mountDev("/dev", "devfs"))
+--assert(k.mountDev("/dev", "devfs"))

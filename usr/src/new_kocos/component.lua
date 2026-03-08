@@ -257,3 +257,109 @@ function component.hasPrimary(type)
 end
 
 Kocos.listen(component._defaultHandler)
+
+---@param filter? string
+---@param exact? boolean
+function syscalls.clist(filter, exact)
+	---@type table<string, string>
+	local t = {}
+	for addr, type in component.list(filter, exact) do
+		t[addr] = type
+	end
+	local k
+	setmetatable(t, {
+		__call = function()
+			k = next(t, k)
+			return k, t[k]
+		end,
+	})
+	return t
+end
+
+---@param shortform string
+---@param filter? string
+---@param exact? boolean
+---@return string?, string?
+function syscalls.caddress(shortform, filter, exact)
+	if type(shortform) ~= "string" then
+		return nil, Kocos.EINVAL
+	end
+	local l, err = syscalls.clist(filter, exact)
+	if err then return nil, err end
+	for addr in l do
+		if string.startswith(addr, shortform) then
+			return addr
+		end
+	end
+	return nil, Kocos.ENODEV
+end
+
+---@param dev Kocos.vdevice
+function syscalls.cadd(dev)
+	if Kocos.currentProcess().uid ~= 0 then
+		return false, Kocos.EACCESS
+	end
+	if component.type(dev.address) then
+		return false, Kocos.EADDRINUSE
+	end
+	component.add(dev)
+	return true
+end
+
+---@param address string
+function syscalls.cremove(address)
+	if Kocos.currentProcess().uid ~= 0 then
+		return false, Kocos.EACCESS
+	end
+	if not component.isVirtual(address) then
+		return false, Kocos.EPERM
+	end
+	Kocos.remove(address)
+	return true
+end
+
+---@param image Kocos.ramfs.node
+---@param label string?
+---@param readonly boolean
+---@param addr string?
+---@return string?, string?
+function syscalls.cramfs(image, label, readonly, addr)
+	if Kocos.currentProcess().uid ~= 0 then
+		return nil, Kocos.EACCESS
+	end
+	return nil, Kocos.ENOIMPL
+end
+
+function syscalls.cmethods(addr)
+	return component.methods(addr)
+end
+
+function syscalls.cinvoke(addr, method, ...)
+	return component.invoke(addr, method, ...)
+end
+
+---@return Kocos.dev?
+function syscalls.cproxy(addr)
+	return component.proxy(addr)
+end
+
+---@return Kocos.dev?
+function syscalls.cprimary(type)
+	return component.getPrimary(type)
+end
+
+function syscalls.cfields(addr)
+	return component.fields(addr)
+end
+
+function syscalls.cdoc(addr, method)
+	return component.doc(addr, method)
+end
+
+function syscalls.cslot(addr)
+	return component.slot(addr)
+end
+
+function syscalls.ctype(addr)
+	return component.type(addr)
+end

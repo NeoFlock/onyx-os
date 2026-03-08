@@ -63,19 +63,7 @@ end
 function io.input(file)
 	local ploc = k.proclocal()
 	if not file then
-		ploc._IO_IN = ploc._IO_IN or io.wrap(1, false, true)
-		return ploc._IO_IN
-	end
-	ploc._IO_IN = file
-	return file
-end
-
----@param file? buffer
----@return buffer
-function io.input(file)
-	local ploc = k.proclocal()
-	if not file then
-		ploc._IO_IN = ploc._IO_IN or io.wrap(1, false, true)
+		ploc._IO_IN = ploc._IO_IN or io.wrap(0, false, true)
 		return ploc._IO_IN
 	end
 	ploc._IO_IN = file

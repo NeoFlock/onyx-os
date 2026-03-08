@@ -1,5 +1,0 @@
-name=tunneld
-type=spawn
-groups=setup,network
-needs=@initfs
-exec=/bin/tunneld.lua

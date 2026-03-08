@@ -37,7 +37,8 @@ local userdb = {}
 ---@param file? string
 ---@return userdb.user[]?, string?
 function userdb.parsePasswd(file)
-	local data, err1 = readfile(file or "/etc/passwd")
+	file = file or "/etc/passwd"
+	local data, err1 = readfile(file)
 	if not data then return nil, err1 end
 
 	---@type userdb.user[]
@@ -141,6 +142,15 @@ function userdb.getinfo(user, users)
 	end
 end
 
+---@param group string
+---@param groups? userdb.group[]
+function userdb.getgroup(group, groups)
+	groups = groups or (userdb.parseGroup() or {})
+	for _, g in ipairs(groups) do
+		if g.name == group then return g end
+	end
+end
+
 ---@param user string
 ---@param users? userdb.user[]
 function userdb.getShell(user, users)
@@ -189,6 +199,26 @@ function userdb.checkpass(user, pass, users, shadows)
 	end
 
 	return false
+end
+
+---@param uid integer
+---@param users? userdb.user[]
+---@return userdb.user?
+function userdb.fromuid(uid, users)
+	users = users or assert(userdb.parsePasswd())
+	for _, user in ipairs(users) do
+		if user.uid == uid then return user end
+	end
+end
+
+---@param gid integer
+---@param groups? userdb.group[]
+---@return userdb.group?
+function userdb.fromgid(gid, groups)
+	groups = groups or assert(userdb.parseGroup())
+	for _, group in ipairs(groups) do
+		if group.gid == gid then return group end
+	end
 end
 
 return userdb

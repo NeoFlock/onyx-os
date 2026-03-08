@@ -1,5 +1,0 @@
-name=miniteld
-type=spawn
-groups=setup,network
-needs=@initfs
-exec=/bin/miniteld.lua

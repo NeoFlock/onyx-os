@@ -128,7 +128,6 @@ assert(k.registerDaemon("initd", function(cpid, action, ...)
 	if type(action) ~= "string" then return end
 	if action == "disableLogger" then
 		-- clear screen
-		Kocos.scr_write("\x1b[2J\x1b[H")
 		Kocos.disableScreen = true
 		return
 	end
@@ -165,7 +164,7 @@ assert(k.registerDaemon("initd", function(cpid, action, ...)
 		if not info then
 			return false, "getprocinfo failed"
 		end
-		if info.euid ~= 0 and info.uid ~= 0 then
+		if info.uid ~= 0 then
 			return false, "permission denied"
 		end
 
@@ -204,5 +203,5 @@ for _, s in ipairs(order) do
 	end
 end
 
--- Shutdown!!!!
-computer.shutdown()
+-- Not supported to happen!!!!
+Kocos.panick("System suspended")

@@ -1,5 +1,4 @@
 ---@diagnostic disable: lowercase-global
--- TODO: use io once it is made
 
 if not k then
 	---@type Kocos.syscalls

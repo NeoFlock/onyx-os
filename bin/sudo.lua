@@ -3,6 +3,7 @@
 local userdb = require("userdb")
 local shutils = require("shutils")
 local readline = require("readline")
+local errno = require("errnos")
 
 -- TODO: let user select another user
 local user = shutils.getUser()
@@ -28,6 +29,9 @@ while true do
 		break
 	else
 		k.write(2, err .. "\n")
+		if err == errno.EPERM then
+			break
+		end
 	end
 end
 

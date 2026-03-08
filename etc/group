@@ -1,4 +1,4 @@
 root::0:root
-default::1:default
+default::1:guest
 guest::2:guest
-wheel::3:wheel
+wheel::3:root,john

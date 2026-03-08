@@ -1,5 +1,7 @@
 --!lua
 
+print("Welcome to", _OSVERSION)
+
 local userdb = require("userdb")
 local readline = require("readline")
 local shutils = require("shutils")
@@ -28,10 +30,8 @@ local function tryLogin(name)
 	local uinfo = getugids(name)
 	if not uinfo then return false end
 	local pid = assert(k.fork(function()
-		assert(k.setuid(uinfo.uid))
 		assert(k.setgid(uinfo.gid))
-		assert(k.seteuid(uinfo.uid))
-		assert(k.setegid(uinfo.gid))
+		assert(k.setuid(uinfo.uid))
 		assert(k.chdir(uinfo.home))
 		local environ = table.copy(assert(k.environ()))
 		environ.USER = uinfo.name
@@ -48,8 +48,7 @@ end
 while true do
 	k.write(1, "login: ")
 	local name = readline()
-	if not name then return end
-	if not tryLogin(name:sub(1, -2)) then
+	if name and not tryLogin(name:sub(1, -2)) then
 		print("login failed")
 		k.sleep(math.random() * 2.5 + 0.5)
 	end

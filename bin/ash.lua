@@ -11,9 +11,13 @@ if args[1] == "-c" then
 	return
 end
 
+local shlvl = 1 + (tonumber(os.getenv("SHLVL")) or 0)
+os.setenv("SHLVL", tostring(shlvl))
+
 print("\x1b[36mAsh\x1b[32m v0.0.1\x1b[0m")
 local history = {}
 while true do
+	os.setenv("PWD", shutils.getWorkingDirectory())
 	k.write(1, shutils.promptFormatToAnsi(os.getenv("PS1")))
 	k.write(1, "\x1b[0m ")
 	local line = readline(nil, nil, nil, function(i) return history[i] end)

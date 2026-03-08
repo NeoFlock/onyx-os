@@ -9,7 +9,7 @@ function shutils.getWorkingDirectory()
 end
 
 function shutils.getUser()
-	local uid = k.geteuid()
+	local uid = k.getuid()
 	local users = userdb.parsePasswd() or {}
 	for _, user in ipairs(users) do
 		if user.uid == uid then return user.name end
@@ -17,7 +17,7 @@ function shutils.getUser()
 end
 
 function shutils.getHostname()
-	return k.hostname()
+	return assert(k.hostname())
 end
 
 ---@param path string

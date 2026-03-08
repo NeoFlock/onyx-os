@@ -5,23 +5,14 @@ local path = ...
 path = path or "."
 
 local terminal = require("terminal")
+local errno = require("errnos")
 
 local d = assert(k.list(path))
 
 local dirColor = "\x1b[34m"
-local mountColor = "\x1b[33m"
+local linkColor = "\x1b[31m"
+local devColor = "\x1b[33m"
 local exeColor = "\x1b[92m"
-local dataColor = "\x1b[35m"
-local devColor = "\x1b[36m"
-local kernelColor = "\x1b[31m"
-
-local colorsForExts = {
-	[".lua"] = exeColor,
-	[".md"] = dataColor,
-	[".json"] = dataColor,
-	[".gitignore"] = dataColor,
-	[".lon"] = dataColor,
-}
 
 local fixedD = {}
 
@@ -44,30 +35,20 @@ end
 -- apply colorization if TTY
 if terminal.isatty(terminal.STDOUT) then
 	for i, f in ipairs(d) do
-		local t = k.ftype(k.join(path, f))
+		local s = assert(k.stat(k.join(path, f)))
+		local big3 = s.perms | (s.perms >> 3) | (s.perms >> 6)
 		local ff = fixedD[i] or f
-		if t == "directory" then
+		if s.type == "directory" then
 			d[i] = dirColor .. ff .. "\x1b[0m"
-		elseif t == "mount" then
-			d[i] = mountColor .. ff .. "\x1b[0m"
-		elseif t == "blockdev" then
+		elseif s.type == "symlink" then
+			d[i] = linkColor .. ff .. "\x1b[0m"
+		elseif s.type ~= "regular" then
 			d[i] = devColor .. ff .. "\x1b[0m"
-		elseif t == "chardev" then
-			d[i] = devColor .. ff .. "\x1b[0m"
-		elseif f == "kernel" then
-			d[i] = kernelColor .. ff .. "\x1b[0m"
-		elseif f == "LICENSE" then
-			d[i] = dataColor .. ff .. "\x1b[0m"
-		elseif f == "Makefile" then
-			d[i] = dataColor .. ff .. "\x1b[0m"
+		elseif big3 & 1 ~= 0 then
+			d[i] = exeColor .. ff .. "\x1b[0m"
 		else
-			for e, c in pairs(colorsForExts) do
-				if string.endswith(f, e) then
-					d[i] = c .. ff .. "\x1b[0m"
-				end
-			end
+			d[i] = ff
 		end
-		if d[i] == f then d[i] = ff end
 	end
 end
 

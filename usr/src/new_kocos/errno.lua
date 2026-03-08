@@ -46,6 +46,8 @@ Kocos.EADDRNOTAVAIL = "address not available"
 Kocos.EAFNOSUPPORT = "address family not supported"
 Kocos.EXDEV = "invalid cross-device link"
 Kocos.EHOSTISDOWN = "host is unreachable"
+Kocos.ENOIMPL = "not implemented"
+Kocos.ENOSUPPORT = "not supported"
 
 ---@return table<string, string>
 function syscalls.errnos()

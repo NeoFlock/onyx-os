@@ -1,258 +1,87 @@
--- An entire shell parser, in one file
+-- Ash as a library, useful for various shell things
 
-local lexer = {}
-local parser = {}
+local ash = {}
 
----@alias libash.tt "whitespace"|"comment"|"command-end"|"text"|"var"|"string"|"rawstring"|"eof"|libash.kw
+ash.whitespace = " \n\t\r\f\v"
+ash.arraySplit = " \n\t"
+ash.bannedSubstituteLetters = ".-()[]{}:="
 
----@alias libash.kw "$?"|"$@"|"$$"|"$arg"|"&"|"|"|"<"|">"|"2>"|"if"|"then"|"else"|"do"|"end"|"for"|"in"|"while"|"function"|"$("|")"
-
----@class libash.token
----@field type libash.tt
----@field start integer
----@field len integer
-
-lexer.varnameChars="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-lexer.whitespaceChars=" \t\r\f\v\a\b"
-lexer.commandSeps = {"\n", ";"}
-lexer.keywords = {
-	"if", "then", "else", "do", "end", "for", "in", "while", "function",
+ash.shellWorlds = {
+	"while",
+	"done",
+	"if",
+	"then",
+	"else",
+	"elif",
+	"fi",
+	"case",
+	"in",
+	"esac",
 }
 
----@return integer
-function lexer.escapeLen(str, start)
-	return 1
-end
-
----@param str string
----@param start integer
----@return libash.token
-function lexer.lexAt(str, start)
-	if start > #str then
-		---@return libash.token
-		return {
-			type = "eof",
-			start = start,
-			len = 0,
-		}
-	end
-	local startC = str:sub(start, start)
-	if table.contains(lexer.commandSeps, startC) then
-		---@return libash.token
-		return {
-			type = "command-end",
-			start = start,
-			len = 1,
-		}
-	end
-	if startC == ")" then
-		---@return libash.token
-		return {
-			type = ")",
-			start = start,
-			len = 1,
-		}
-	end
-	if startC == "<" then
-		---@return libash.token
-		return {
-			type = "<",
-			start = start,
-			len = 1,
-		}
-	end
-	if startC == ">" then
-		---@return libash.token
-		return {
-			type = ">",
-			start = start,
-			len = 1,
-		}
-	end
-	if startC == "|" then
-		---@return libash.token
-		return {
-			type = "|",
-			start = start,
-			len = 1,
-		}
-	end
-	if startC == "&" then
-		---@return libash.token
-		return {
-			type = "&",
-			start = start,
-			len = 1,
-		}
-	end
-	if startC == "2" and str:sub(start+1, start+1) == ">" then
-		---@return libash.token
-		return {
-			type = "2>",
-			start = start,
-			len = 2,
-		}
-	end
-	if startC == "$" then
-		local n = str:sub(start+1, start+1)
-		if n == "?" then
-			---@return libash.token
-			return {
-				type = "$?",
-				start = start,
-				len = 2,
-			}
-		end
-		if n == "@" then
-			---@return libash.token
-			return {
-				type = "$@",
-				start = start,
-				len = 2,
-			}
-		end
-		if n == "$" then
-			---@return libash.token
-			return {
-				type = "$$",
-				start = start,
-				len = 2,
-			}
-		end
-		if n == "(" then
-			---@return libash.token
-			return {
-				type = "$(",
-				start = start,
-				len = 2,
-			}
-		end
-		local len = 1
-		while true do
-			local c = str:sub(start+len, start+len)
-			if c == "" then break end
-			if not string.find(lexer.varnameChars, c) then break end
-			len = len + 1
-		end
-		local s = str:sub(start, start+len-1)
-		if s == "$" then
-			---@return libash.token
-			return {
-				type = "text",
-				start = start,
-				len = 1,
-			}
-		end
-		if tonumber(s:sub(2)) then
-			---@return libash.token
-			return {
-				type = "$arg",
-				start = start,
-				len = len,
-			}
-		end
-		---@return libash.token
-		return {
-			type = "var",
-			start = start,
-			len = len,
-		}
-	end
-	if startC == '"' then
-		-- good string
-		local len = 1
-		while true do
-			local c = str:sub(start+len, start+len)
-			if c == "" then break end -- we're allowing it but we don't like it
-			len = len + lexer.escapeLen(str, start+len)
-			if c == '"' then break end
-		end
-		---@return libash.token
-		return {
-			type = "string",
-			start = start,
-			len = len,
-		}
-	end
-	if startC == "'" then
-		-- raw string
-		local len = 1
-		while true do
-			local c = str:sub(start+len, start+len)
-			if c == "" then break end -- we're allowing it but we don't like it
-			len = len + 1
-			if c == "'" then break end
-		end
-		---@return libash.token
-		return {
-			type = "rawstring",
-			start = start,
-			len = len,
-		}
-	end
-	if startC == "#" then
-		local len = 1
-		while true do
-			local c = str:sub(start+len, start+len)
-			if c == "" then break end
-			len = len + 1
-			if c == "\n" then break end
-		end
-		---@return libash.token
-		return {
-			type = "comment",
-			start = start,
-			len = len,
-		}
-	end
-	if string.find(lexer.whitespaceChars, startC, nil, true) then
-		local len = 1
-		while true do
-			local c = str:sub(start+len, start+len)
-			if c == "" then break end
-			if not string.find(lexer.whitespaceChars, c, nil, true) then break end
-			len = len + 1
-		end
-		---@return libash.token
-		return {
-			type = "whitespace",
-			start = start,
-			len = len,
-		}
-	end
-	if string.find(lexer.varnameChars, startC, nil, true) then
-		local len = 1
-		while true do
-			local c = str:sub(start+len, start+len)
-			if c == "" then break end
-			if not string.find(lexer.varnameChars, c, nil, true) then break end
-			len = len + 1
-		end
-		local v = str:sub(start, start+len-1)
-		if table.contains(lexer.keywords, v) then
-			---@return libash.token
-			return {
-				type = v,
-				start = start,
-				len = len,
-			}
-		end
-		---@return libash.token
-		return {
-			type = "text",
-			start = start,
-			len = len,
-		}
-	end
-	---@return libash.token
-	return {
-		type = "text",
-		start = start,
-		len = 1,
-	}
-end
-
-return {
-	lexer = lexer,
-	parser = parser,
+ash.shellSymbols = {
+	"$(",
+	")",
+	"=",
+	"&&",
+	"||",
+	">>",
+	"<<",
+	">",
+	"|",
+	"\n",
+	";",
 }
+
+---@class ash.argument
+---@field value? string
+---@field substitution? string
+---@field command? ash.command
+---@field compound? ash.argument[]
+
+---@class ash.command
+--- echo hi
+---@field simple? ash.argument[]
+--- while condition; <block>; done;
+---@field while? {condition: ash.command, body: ash.command[]}
+--- if condition; then; <block>; fi
+---@field if? {checks: {condition: ash.command, body: ash.command}[], fallback: ash.command[]}
+--- op |
+---@field pipeTo? ash.command
+--- op > file
+---@field outputTo? {fd: integer, file: string}
+--- op >> file
+---@field appendTo? {fd: integer, file: string}
+--- op < file
+---@field readFrom? string
+--- op &&
+---@field both? {left: ash.command, right: ash.command}
+--- op ||
+---@field either? {left: ash.command, right: ash.command}
+
+---@alias ash.tt "text"|"word"|"substitution"|"symbol"|"space"|"command-end"
+
+---@class ash.token
+---@field tt ash.tt
+---@field data string
+---@field loc integer
+
+---@param data string
+---@return ash.token[]? tokens, string? error, integer? errloc
+function ash.lex(data)
+	---@type ash.token[]
+	local toks = {}
+	local off = 0
+	while off < #data do
+	::continue::
+	end
+	return toks
+end
+
+---@param tokens ash.token[]
+---@return ash.command[]? commands, string? error, integer? errloc
+function ash.parseTokens(tokens)
+
+end
+
+return ash

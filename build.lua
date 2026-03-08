@@ -13,9 +13,97 @@ end
 if not os.exec then
 	-- on actual Lua
 	package.path = package.path .. ";usr/lib/?.lua"
+	require("usr.src.kocos.utils")
 end
 
-require("usr.src.kocos.utils")
+local function perms3(str)
+	local n = 0
+	if str:sub(1,1) == "r" then n = n + 4 end
+	if str:sub(2,2) == "w" then n = n + 2 end
+	if str:sub(3,3) == "x" then n = n + 1 end
+	return n
+end
+
+local function perms(str)
+	return perms3(str) * 64 + perms3(str:sub(4)) * 8 + perms3(str:sub(7))
+end
+
+---@param path string
+---@return string
+local function permsOf(path)
+	if path == "sbin" then return "rwxr-xr-x" end
+	if string.startswith(path, "sbin/") then return "rwxr-xr-x" end
+	if path == "bin" then return "rwxr-xr-x" end
+	if string.startswith(path, "bin/") then return "rwxr-xr-x" end
+	if path == "lib" then return "rwxr-xr-x" end
+	if string.startswith(path, "lib/") then return "rwxr-xr-x" end
+	if path == "root" then return "rwxr-xr-x" end
+	if path == "etc/onit.conf" then return "rwxr-xr-x" end
+	if path == "etc/passwd" then return "rw-r--r--" end
+	if path == "etc/group" then return "rw-r--r--" end
+	if path == "etc/shadow" then return "rw-------" end
+	if path == "home/helloWorld.lua" then return "rwxrwxrwx" end
+	if path == "etc/onit.d" then return "rw-r--r--" end
+	if string.startswith(path, "etc/onit.d/") then return "rw-r--r--" end
+	if path == "usr/bin" then return "rwxr-xr-x" end
+	if string.startswith(path, "usr/bin/") then return "rwxr-xr-x" end
+	if path == "usr/lib" then return "rwxr-xr-x" end
+	if string.startswith(path, "usr/lib/") then return "rwxr-xr-x" end
+	if path == "boot" then return "rwxr-xr-x" end
+	if path == "init.lua" then return "rwxr-xr-x" end
+	if string.startswith(path, "boot/") then return "rwxr-xr-x" end
+	return "rw-rw-rw-"
+end
+
+local list = io.list or function(path)
+	local lfs = require("lfs")
+	local t = {}
+	for e in lfs.dir(path) do
+		table.insert(t, e)
+	end
+	return t
+end
+
+local ftype = io.ftype or function(path)
+	local lfs = require("lfs")
+	return lfs.attributes(path, 'mode') == 'directory' and 'directory' or 'regular'
+end
+
+local function recursiveFiles()
+	local forbidden = {
+		".kocos",
+		".git",
+		".gitkeep",
+		".",
+		"..",
+	}
+
+	local files = {}
+
+	local function scanDir(path)
+		local entries = assert(list(path))
+		for _, entry in ipairs(entries) do
+			if not table.contains(forbidden, entry) then
+				local fullpath = path .. "/" .. entry
+				table.insert(files, fullpath)
+				if ftype(fullpath) == "directory" then
+					scanDir(fullpath)
+				end
+			end
+		end
+	end
+
+	local root = assert(list("."))
+	for _, entry in ipairs(root) do
+		if not table.contains(forbidden, entry) then
+			table.insert(files, entry)
+			if ftype(entry) == "directory" then
+				scanDir(entry)
+			end
+		end
+	end
+	return files
+end
 
 local toBuild = {
 	"onyx",
@@ -36,8 +124,12 @@ local buildInfo = {
 	onyx = {
 		type = "none",
 		deps = {
+			"kocos_metadata",
 			os.getenv("ONYX_KERNEL") or "kocos", -- need the kernel, obviously
 		},
+	},
+	kocos_metadata = {
+		type = "buildmeta",
 	},
 	new_kocos = {
 		type = "cat",
@@ -127,6 +219,24 @@ local function runBuild(thing)
 		end
 		local f = assert(io.open(entry.out, "wb"))
 		f:write(outcode)
+		f:flush()
+		f:close()
+	elseif entry.type == "buildmeta" then
+		local everything = recursiveFiles()
+		-- Kocos Metadata 1
+		local lines = {
+			"KMETA 1",
+			"PATH FTYPE OWNER GROUP PERMS",
+		}
+
+		for _, path in ipairs(everything) do
+			local p = perms(permsOf(path))
+			table.insert(lines, string.format("%s %s 0 0 %d", path, ftype(path), p))
+		end
+
+
+		local f = assert(io.open(".kocos", "wb"))
+		f:write(table.concat(lines, "\n"))
 		f:flush()
 		f:close()
 	end

@@ -27,6 +27,7 @@ end
 
 ----@param fd integer
 function terminal.isatty(fd)
+	if k.isatty then return k.isatty(fd) end
 	return terminal.fterminfo(fd) ~= nil
 end
 

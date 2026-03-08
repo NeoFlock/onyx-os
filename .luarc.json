@@ -1,5 +1,12 @@
 {
     "diagnostics.disable": [
         "inject-field"
+    ],
+    "diagnostics.globals": [
+        "lfs"
+    ],
+    "workspace.library": [
+        "/home/ionut/.config/nvim/lua_ls/love2d/library",
+        "${3rd}/lfs/library"
     ]
 }

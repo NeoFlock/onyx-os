@@ -325,7 +325,7 @@ function nicefs.ensureHasBlock(state, entry)
 	return true
 end
 
-assert(k.mkdriver(function(req, ...)
+k.mkdriver(function(req, ...)
 	if req == "FS-mount" then
 		---@type Kocos.fs.partition
 		local dev = ...
@@ -437,7 +437,7 @@ assert(k.mkdriver(function(req, ...)
 		nicefs.sync(state)
 		return
 	end
-end))
+end)
 
 -- service done loading
 

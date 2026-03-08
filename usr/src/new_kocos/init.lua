@@ -5,8 +5,6 @@ _OSVERSION = _OSVERSION or "Unknown KOCOS"
 
 local argv = {...}
 
----@alias Kocos.device {address: string, type: string, slot: integer}|table
-
 Kocos.biotBootTime = computer.uptime()
 
 ---@type table<string, string>
@@ -14,6 +12,9 @@ Kocos.cmdline = {}
 
 ---@type string?
 Kocos.ramfs = nil
+
+---@type ("halt"|"reboot"|"poweroff")?
+Kocos.shutdown = nil
 
 ---@param cmdline string
 ---@return table<string, string>
@@ -75,6 +76,7 @@ end
 
 Kocos.disableScreen = Kocos.getCmdlineBool("NO_SCR", false)
 Kocos.disableDefaultPanicHandler = Kocos.getCmdlineBool("CUSTOM_PANIC", false)
+Kocos.hostname = Kocos.getCmdlineStr("HOSTNAME", "localhost")
 
 Kocos.L_DEBUG = 0
 Kocos.L_INFO = 1
@@ -149,7 +151,12 @@ function Kocos.printk(severity, msg)
 			Kocos.notifyListeners("kocos_panic", uptime, msg)
 			return
 		end
-		Kocos.pull(5)
+		local deadline = computer.uptime() + 5
+		while true do
+			local now = computer.uptime()
+			if now >= deadline then break end
+			Kocos.pull(now - deadline)
+		end
 		computer.shutdown(true)
 	end
 end
@@ -196,7 +203,7 @@ function syscall(sysname, ...)
 	end
 
 	local sysfunc = syscalls[sysname]
-	if not sysfunc then return nil, Kocos.ESRCH end
+	if not sysfunc then return nil, Kocos.ENOSYS end
 
 	local t = {pcall(sysfunc, ...)}
 
@@ -216,6 +223,51 @@ function syscalls.syscalls()
 	return t
 end
 
+---@type fun(): number
+syscalls.uptime = computer.uptime
+
+---@class Kocos.sysinfo
+---@field kernel string
+---@field os string
+---@field bootAddress string
+---@field rootAddress string
+---@field tmpAddress string
+---@field hostname string
+---@field memtotal integer
+---@field memfree integer
+---@field kernelPID integer
+---@field initPID integer
+---@field energy number
+---@field maxEnergy number
+
+function syscalls.sysinfo()
+	---@type Kocos.sysinfo
+	return {
+		kernel = _KVERSION,
+		os = _OSVERSION,
+		bootAddress = computer.getBootAddress(),
+		rootAddress = Kocos.mounts[""].device,
+		tmpAddress = computer.tmpAddress(),
+		memfree = computer.freeMemory(),
+		memtotal = computer.totalMemory(),
+		hostname = Kocos.hostname,
+		kernelPID = 0,
+		initPID = 1,
+		energy = computer.energy(),
+		maxEnergy = computer.maxEnergy(),
+	}
+end
+
+---@param hostname? string
+---@return string?, string?
+function syscalls.hostname(hostname)
+	if hostname then
+		if Kocos.currentProcess().uid ~= 0 then return nil, Kocos.EACCESS end
+		Kocos.hostname = hostname
+	end
+	return Kocos.hostname
+end
+
 -- file descriptor system
 
 Kocos.O_NONBLOCK = 1
@@ -229,13 +281,15 @@ Kocos.O_CLOEXEC = 2
 ---@field pid integer
 ---@field callback fun(ev: Kocos.descriptorEv, ...)
 
+---@alias Kocos.descriptorHandler fun(desc: table|Kocos.descriptor, ev: Kocos.descriptorReq, ...): ...
+
 ---@class Kocos.descriptor
----@field type "file"|"pipe"|"device"|"socket"
+---@field type "file"|"pipe"|"device"|"socket"|"tty"|"timer"
 ---@field state string
 ---@field rc integer
 ---@field flags integer
 ---@field pid integer
----@field handler fun(desc: Kocos.descriptor, ev: Kocos.descriptorReq, ...): ...
+---@field handler Kocos.descriptorHandler
 ---@field evbuf? table[]
 ---@field listener? Kocos.fileListener
 

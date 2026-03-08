@@ -32,7 +32,7 @@ table.insert(infoLines, "Free Memory: " .. string.memformat(sysinfo.memfree) .. 
 table.insert(infoLines, "Energy: " .. sysinfo.energy .. " FE / " .. sysinfo.maxEnergy ..  "FE")
 for dev, path in pairs(mounts) do
 	local stat = assert(k.stat(path))
-	local line = string.format("%s -> %s... (%s / %s %3.2f%%)", path, dev:sub(1, 6), string.memformat(stat.diskUsed), string.memformat(stat.diskTotal), stat.diskUsed / stat.diskTotal)
+	local line = string.format("%s -> %s... (%s / %s %3.2f%%)", path, dev:sub(1, 6), string.memformat(stat.diskUsed), string.memformat(stat.diskTotal), stat.diskUsed / stat.diskTotal * 100)
 	table.insert(infoLines, line)
 end
 
