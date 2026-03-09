@@ -1,563 +1,778 @@
-local process = {}
+local sysyieldobj = {}
+Kocos.coroThread = coroutine.running()
 
-process.npid = 0
+function Kocos.sysyield()
+	if coroutine.running() == Kocos.coroThread then return end
+	coroutine.yield(sysyieldobj)
+end
 
-process.execDeadline = math.huge
+Kocos.resume = coroutine.resume
 
--- File descriptors / resources with special meanings
---- The standard input stream
-process.STDIN = 0
---- The standard output stream
-process.STDOUT = 1
---- The standard error stream
-process.STDERR = 2
---- The standard terminal stream
-process.STDTERM = 3
+-- Magic
+coroutine.resume = function(co, ...)
+	while true do
+		local t = {Kocos.resume(co, ...)}
+		if t[1] and sysyieldobj == t[2] then
+			Kocos.sysyield()
+		else
+			return table.unpack(t)
+		end
+	end
+end
 
----@class Kocos.process.module
+---@class Kocos.procmod
 ---@field data string
 ---@field src string
 
----@class Kocos.process.sharedLib
----@field modules table<string, Kocos.process.module>
----@field deps Kocos.process.sharedLib[]
-
----@alias Kocos.process.condition fun(): boolean
-
----@class Kocos.process
+---@class Kocos.vmproc
 ---@field state "running"|"dying"|"dead"|"finished"
 ---@field pid integer
 ---@field uid integer
 ---@field gid integer
----@field euid integer
----@field egid integer
----@field thread thread
----@field namespace _G
----@field args string[]
----@field blockUntil Kocos.process.condition[]
+---@field argv string[]
 ---@field env table<string, string>
----@field modules table<string, Kocos.process.module>
----@field deps Kocos.process.sharedLib[]
----@field driver? function
----@field fds table<integer, Kocos.Handle>
----@field signals table<string, function>
----@field children table<integer, Kocos.process>
----@field parent? Kocos.process
+---@field parent? Kocos.vmproc
+---@field children table<integer, Kocos.vmproc>
+---@field coro? thread
+---@field boundKmod string[]
+---@field modules table<string, Kocos.procmod>
 ---@field stopped boolean
 ---@field cwd string
 ---@field root string
----@field exe? string
+---@field exe string
 ---@field exitcode integer
----@field tracer? Kocos.process
+---@field debugger? Kocos.vmproc
 ---@field daemon? string
 ---@field ev_listener? function
----@field reEnterAs? Kocos.process
 ---@field desiredExecTime? number
+---@field signalHandlers table<string, function>
 ---@field proclocal table
+---@field fds table<integer, Kocos.descriptor>
+---@field namespace _G
+---@field resumeTo? Kocos.vmproc[]
 
----@type table<integer, Kocos.process>
-process.allProcs = {}
-
----@class Kocos.process.daemon
----@field proc Kocos.process
+---@class Kocos.daemon
+---@field proc Kocos.vmproc
 ---@field callback fun(cpid: integer, ...): ...
 
----@type table<string, Kocos.process.daemon>
-process.daemons = {}
+---@type table<integer, Kocos.vmproc>
+Kocos.processes = {}
 
-function process.nextPid()
-	if Kocos.args.useExtremelySecurePidGeneration then
-		local pid = math.random(1, 2^32-1)
-		while process.allProcs[pid] do
-			pid = math.random(1, 2^32-1)
-		end
-		return pid
+---@type Kocos.vmproc[]
+Kocos.procStack = {}
+
+-- Kernel process
+Kocos.kernelProcess = {
+	state = "running",
+	pid = 0,
+	uid = 0,
+	gid = 0,
+	argv = {},
+	env = {},
+	parent = nil,
+	children = {},
+	-- pretend its already gone
+	coro = nil,
+	boundKmod = {},
+	modules = {},
+	stopped = false,
+	cwd = "/",
+	root = "/",
+	exe = Kocos.getCmdlineStr("KPATH", "/boot/vmkocos"),
+	exitcode = 0,
+	debugger = nil,
+	daemon = nil,
+	ev_listener = nil,
+	desiredExecTime = nil,
+	signalHandlers = {},
+	proclocal = {},
+	fds = {},
+	namespace = _G,
+}
+
+Kocos.processes[0] = Kocos.kernelProcess
+Kocos.procStack[1] = Kocos.kernelProcess
+
+Kocos.defaultExecTime = Kocos.getCmdlineNum("EXEC_TIME", 0.5)
+
+---@type table<string, Kocos.daemon>
+Kocos.daemons = {}
+
+local npid = 1
+
+function Kocos.currentProcess()
+	return Kocos.procStack[#Kocos.procStack]
+end
+
+---@param proc Kocos.vmproc
+function Kocos.pushProcess(proc)
+	table.insert(Kocos.procStack, proc)
+end
+
+function Kocos.popProcess()
+	assert(#Kocos.procStack > 1, "out of processes")
+	Kocos.procStack[#Kocos.procStack] = nil
+end
+
+---@param proc Kocos.vmproc
+---@param f function
+---@param msgh function
+function Kocos.procXCall(proc, f, msgh, ...)
+	Kocos.pushProcess(proc)
+	local t = {xpcall(f, msgh, ...)}
+	Kocos.popProcess()
+	return t
+end
+
+---@param proc Kocos.vmproc
+---@param f function
+function Kocos.procCall(proc, f, ...)
+	Kocos.pushProcess(proc)
+	local t = {pcall(f, ...)}
+	Kocos.popProcess()
+	return t
+end
+
+---@param proc Kocos.vmproc
+---@return integer
+function Kocos.availableDescriptorFor(proc)
+	local fd = 0
+	while proc.fds[fd] do fd = fd + 1 end
+	return fd
+end
+
+---@param proc Kocos.vmproc
+---@param exit integer
+function Kocos.terminateProcess(proc, exit)
+	if proc.state ~= "running" then return end
+	proc.state = "finished"
+	proc.exitcode = exit
+	if proc.pid == 0 then
+		Kocos.panickf("KERNEL EXITED: %d", exit)
+		return
 	end
-	local pid = process.npid
-	process.npid = process.npid + 1
-	return pid
-end
-
----@param thread thread
----@param namespace _G
----@param uid integer
----@param gid integer
----@return Kocos.process
-function process.create(thread, namespace, uid, gid)
-	local pid = process.nextPid()
-
-	---@type Kocos.process
-	local proc = {
-		pid = pid,
-		uid = uid,
-		gid = gid,
-		euid = uid,
-		egid = gid,
-		thread = thread,
-		namespace = namespace,
-		args = {},
-		env = {},
-		modules = {},
-		deps = {},
-		fds = {},
-		signals = {},
-		children = {},
-		stopped = false,
-		state = "running",
-		cwd = "/",
-		root = "/",
-		exitcode = 0,
-		blockUntil = {},
-		proclocal = {},
-	}
-
-
-	process.allProcs[pid] = proc
-
-	return proc
-end
-
----@param proc Kocos.process
----@param func function
----@return Kocos.process
-function process.fork(proc, func)
-	local forked = process.create(coroutine.create(func), proc.namespace, proc.uid, proc.gid)
-	forked.euid = proc.euid
-	forked.egid = proc.egid
-	forked.args = table.copy(proc.args)
-	forked.env = table.copy(proc.env)
-	forked.blockUntil = table.copy(proc.blockUntil)
-	-- no table.copy cuz they're immutable anyways
-	forked.modules = proc.modules
-	forked.deps = proc.deps
-	-- driver is not copied over
-	-- resources are retained
-	for fd, res in pairs(proc.fds) do
-		forked.fds[fd] = res
-		res.rc = res.rc + 1
+	if proc.pid == 1 then
+		Kocos.panickf("INIT EXITED: %d", exit)
+		return
 	end
-	forked.stopped = proc.stopped
-	forked.cwd = proc.cwd
-	forked.root = proc.root
-	forked.exitcode = proc.exitcode
-	forked.tracer = proc.tracer
-	forked.parent = proc
-	forked.exe = proc.exe
-	forked.desiredExecTime = proc.desiredExecTime
-	proc.children[forked.pid] = forked
-	return forked
-end
-
----@param proc Kocos.process
----@param parent Kocos.process
-function process.isDecendantOf(proc, parent)
-	while parent do
-		if proc.parent == parent then return true end
-		parent = parent.parent
+	if proc.parent then
+		Kocos.sendSignal(proc.parent, "SIGCHLD", proc.pid, exit)
 	end
-	return false
+	Kocos.sendSignal(proc, "SIGABRT")
+
+	-- TODO: cleanup
+	if proc.ev_listener then
+		Kocos.forget(proc.ev_listener)
+	end
+
+	for _, mod in ipairs(proc.boundKmod) do
+		Kocos.removeModule(mod)
+	end
+
+	for _, f in pairs(proc.fds) do
+		Kocos.closeDescriptor(f)
+	end
+	proc.fds = {}
+
+	if proc.daemon then
+		Kocos.daemons[proc.daemon] = nil
+	end
+
+	if Kocos.currentProcess() == proc then
+		Kocos.sysyield()
+		return
+	end
 end
 
--- posix-y signals
-process.SIGABRT = "SIGABRT" -- process closed
-process.SIGALRM = "SIGALRM" -- alarm
-process.SIGTERM = "SIGTERM" -- terminate
-process.SIGKILL = "SIGKILL" -- die
-process.SIGUSR1 = "SIGUSR1" -- user specified
-process.SIGUSR2 = "SIGUSR2" -- user specified 2
-process.SIGCHLD = "SIGCHLD" -- child died
-process.SIGINT = "SIGINT" -- interrupted
-process.SIGPIPE = "SIGPIPE" -- the pipe is gone
-process.SIGQUIT = "SIGQUIT" -- quit process
-process.SIGSTOP = "SIGSTOP" -- stop process
-process.SIGTSTP = "SIGTSTP" -- stop process too
-process.SIGSYS = "SIGSYS" -- bad syscall
-process.SIGWINCH = "SIGWINCH" -- window changed
-process.SIGURG = "SIGURG" -- urgent stuff
-process.SIGTRAP = "SIGTRAP" -- a trap
-process.SIGCONT = "SIGCONT" -- continue
-process.SIGSYSC = "SIGSYSC" -- when tracing, traced process did a system call
-process.SIGSYSR = "SIGSYSR" -- when tracing, traced process did a system return
-process.SIGPWR = "SIGPWR" -- shutdown or reboot
-
--- and these non-POSIX ones used by displayd
-process.SIGWINTOUCH = "SIGWINTOUCH" -- window touched
-process.SIGWINDRAG = "SIGWINDRAG" -- window touched
-process.SIGWINDROP = "SIGWINDROP" -- window touched
-process.SIGWINSCROLL = "SIGWINSCROLL" -- window touched
-process.SIGKEYUP = "SIGKEYUP" -- key released
-process.SIGKEYDOWN = "SIGKEYDOWN" -- key pressed
-process.SIGKEYPASTE = "SIGKEYPASTE" -- clipboard
-process.SIGSCRADD = "SIGSCRADD" -- screen added
-process.SIGSCRREM = "SIGSCRREM" -- screen removed
-
----@param proc Kocos.process
----@param signal string
-function process.raise(proc, signal, ...)
-	if not proc then return end
-	if signal == process.SIGSTOP then
+---@param proc Kocos.vmproc
+---@param sig string
+function Kocos.sendSignal(proc, sig, ...)
+	if sig == "SIGSTOP" then
 		proc.stopped = true
-		if process.current == proc then coroutine.yield() end
+		if Kocos.currentProcess() == proc then coroutine.yield() end
 		return
 	end
-	if signal == process.SIGKILL then
-		process.terminate(proc)
+	if sig == "SIGKILL" then
+		Kocos.terminateProcess(proc, 1)
 		return
 	end
-	if signal == process.SIGCONT then
+	if sig == "SIGCONT" then
 		proc.stopped = false
 		return
 	end
-	if proc.signals[signal] then
-		-- Handler!!!!!!!
-		local ok, err = process.pcall(proc, proc.signals[signal], ...)
-		if not ok then
-			Kocos.printkf(Kocos.L_WARN, "pid %d: error in handler for signal %s: %s", proc.pid, signal, err)
+	if proc.signalHandlers[sig] then
+		local t = Kocos.procCall(proc, proc.signalHandlers[sig], ...)
+		if not t[1] then
+			Kocos.printkf(Kocos.L_WARN, "pid %d: error in handler for signal %s: %s", proc.pid, sig, t[2])
 		end
-		-- no return to allow unmodifiable behavior
 	else
-		-- Default handlers
-		if signal == process.SIGINT then
-			process.terminate(proc)
+		-- default handlers
+
+		-- forbidden.
+		-- This prevends pkilling the kernel or init.
+		if proc.pid == 0 or proc.pid == 1 then return end
+
+		if sig == "SIGINT" then
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
-		if signal == process.SIGPIPE then
-			process.terminate(proc)
+		if sig == "SIGPIPE" then
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
-		if signal == process.SIGUSR1 then
-			process.terminate(proc)
+		if sig == "SIGUSR1" then
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
-		if signal == process.SIGUSR2 then
-			process.terminate(proc)
+		if sig == "SIGUSR2" then
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
-		if signal == process.SIGTRAP then
+		if sig == "SIGTRAP" then
 			local err = ...
 			if type(err) == "string" then
-				process.pcall(proc, syscall, "write", process.STDERR, err .. "\n")
+				Kocos.printkf(Kocos.L_WARN, "pid %d crashed: %s", proc.pid, err)
+				Kocos.procCall(proc, syscall, "write", 2, err .. "\n")
 			end
-			process.terminate(proc)
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
-		if signal == process.SIGTERM then
-			process.terminate(proc)
+		if sig == "SIGTERM" then
+			Kocos.terminateProcess(proc, 1)
 			return
 		end
 	end
 
 	-- Unmodifiable behavior
-	if signal == process.SIGABRT then
-		process.terminate(proc, 1)
+	if sig == "SIGABRT" then
+		Kocos.terminateProcess(proc, 1)
 		return
 	end
 end
 
----@param proc Kocos.process
----@param f fun(...): ...
----@param msgh fun(s: any): any
----@return boolean, ...
-function process.xpcall(proc, f, msgh, ...)
-	local oldCurProc = process.current
-	process.current = proc
-	-- OOM problem!!!!
-	local t = {xpcall(f, msgh, ...)}
-	process.current = oldCurProc
-	return table.unpack(t)
-end
+---@param proc Kocos.vmproc
+function Kocos.closeProcess(proc)
+	-- nice try
+	if proc.state == "dying" then return end
+	if not Kocos.processes[proc.pid] then return end
+	Kocos.terminateProcess(proc, 1)
+	proc.state = "dying"
 
----@param proc Kocos.process
----@param f fun(...): ...
----@return boolean, ...
-function process.pcall(proc, f, ...)
-	return process.xpcall(proc, f, tostring, ...)
-end
+	-- Reparent children
+	while true do
+		local cpid, child = next(proc.children)
+		if not cpid or not child then break end
 
----@param proc Kocos.process
----@param res Kocos.Handle
-function process.moveResource(proc, res)
-	local fd = 0
-	while proc.fds[fd] do fd = fd + 1 end
-	proc.fds[fd] = res
-	return fd
-end
-
----@param proc Kocos.process
----@param exit? integer
-function process.terminate(proc, exit)
-	if proc.state ~= "running" then return end -- nice try, signal handler
-	proc.state = "finished"
-	proc.exitcode = exit or 1
-	if proc == process.root then
-		Kocos.panickf("KERNEL EXITED: %d", proc.exitcode)
-		return
-	end
-	if proc == Kocos.process.init then
-		Kocos.panickf("INIT EXITED: %d", proc.exitcode)
-		return
-	end
-	if proc.parent then
-		process.raise(proc.parent, process.SIGCHLD, proc.pid, proc.exitcode)
-	end
-
-	process.raise(proc, process.SIGABRT)
-
-	if proc.driver then
-		Kocos.removeDriver(proc.driver)
-		proc.driver = nil
-	end
-	if proc.ev_listener then
-		Kocos.event.forget(proc.ev_listener)
-		proc.ev_listener = nil
-	end
-
-	if proc.daemon then
-		-- daemon is gone
-		process.daemons[proc.daemon] = nil
-	end
-
-	for _, res in pairs(proc.fds) do
-		Kocos.handles.close(res)
-	end
-	proc.fds={}
-
-	if process.current == proc then
-		coroutine.yield()
-		return
-	end
-end
-
----@param proc Kocos.process
-function process.close(proc)
-	if proc.state == "dying" then return end -- nice try, signal handler
-	if not process.allProcs[proc.pid] then return end -- somehow died twice???
-	process.terminate(proc, 1)
-	proc.state = "dying" -- to prevent bad shit
-
-	---@type Kocos.process[]
-	local allChildren = {}
-	for _, child in pairs(proc.children) do table.insert(allChildren, child) end
-
-	for _, child in ipairs(allChildren) do
-		process.close(child)
+		proc.children[cpid] = nil -- remove child
+		child.parent = Kocos.processes[1] or Kocos.processes[0]
+		child.parent.children[cpid] = child
 	end
 
 	if proc.parent then
 		proc.parent.children[proc.pid] = nil
 	end
 
-
-	process.allProcs[proc.pid] = nil -- and he's gone
+	Kocos.processes[proc.pid] = nil -- rip
 	proc.state = "dead"
 end
 
----@param proc Kocos.process
----@param path string
-function process.resolve(proc, path)
-	if path:sub(1,1) == "/" then
-		return Kocos.fs.join(proc.root, Kocos.fs.canonical(path))
-	end
-	return Kocos.fs.join(proc.root, proc.cwd, path)
-end
-
----@param lib Kocos.process.sharedLib
----@param module string
----@param refs? table
----@return Kocos.process.module?
-function process.libreadmod(lib, module, refs)
-	refs = refs or {}
-	-- in case of cyclical bullshit dependencies
-	if refs[lib] then return end
-	refs[lib] = true
-
-	---@type Kocos.process.module?
-	local mod = lib.modules[module]
-	if mod then return mod end
-
-	for _, dep in ipairs(lib.deps) do
-		mod = process.libreadmod(dep, module, refs)
-		if mod then return mod end
-	end
-end
-
----@param proc Kocos.process
----@param module string
----@return Kocos.process.module?
-function process.readmod(proc, module)
-	---@type Kocos.process.module?
-	local mod = proc.modules[module]
-	if mod then return mod end
-
-	local refs = {}
-
-	for _, dep in ipairs(proc.deps) do
-		mod = process.libreadmod(dep, module, refs)
-		if mod then return mod end
-	end
-end
-
----@class Kocos.process.image
+---@class Kocos.procimage
 ---@field init function
----@field modules table<string, Kocos.process.module>
----@field deps string[]
+---@field modules table<string, Kocos.procmod>
 
----@param proc Kocos.process
----@param argv string[]
----@param env table<string, string>
+---@param path string
+---@param data string
 ---@param namespace _G
----@return boolean?, string?
-function process.exec(proc, path, argv, env, namespace)
-	local data = assert(readfile(path))
-	for _, driver in ipairs(Kocos.drivers) do
-		-- PROC-binfmt
-		---@type Kocos.process.image?, string?
-		local img, err2 = driver("PROC-binfmt", path, data, namespace)
-		if err2 then
-			-- actual error instead of being ignored
-			return nil, err2
-		end
-		if img then
-			-- if this is nil and err2 is also nil, means driver ignored it
-			proc.exe = path
-			proc.args = argv
-			proc.env = env
-			proc.namespace = namespace
-			if proc.driver then
-				Kocos.removeDriver(proc.driver)
-				proc.driver = nil
-			end
-			proc.thread = coroutine.create(img.init)
-			proc.modules = img.modules
-			proc.deps = {} -- TODO: deps
-			proc.signals = {} -- Signal handlers are ignored
-			---@type integer[]
-			local toClose = {}
-			for fd, res in pairs(proc.fds) do
-				-- TODO: check cloexec
-				if (res.flags & Kocos.fs.O_CLOEXEC) ~= 0 then
-					table.insert(toClose, fd)
+---@param env table<string, string>
+---@return Kocos.procimage?, string?
+--- Parse the contents of an executable file
+function Kocos.parseExecutable(path, data, namespace, env)
+	if data:sub(1, 2) == "#!" then
+		-- shebang
+		local lineTerm = string.find(data, "\n")
+		if not lineTerm then return nil, Kocos.ENOEXEC end
+
+		local args = string.split(string.sub(data, 3, lineTerm-1), " ")
+		local cmd = table.remove(args, 1)
+		if not cmd then return nil, Kocos.ENOEXEC end
+		args[0] = cmd
+		table.insert(args, path)
+		return {
+			init = function()
+				local proc = Kocos.currentProcess()
+				local ok, err = syscall("exec", cmd, args)
+				if ok then
+					-- exec returned???
+					Kocos.terminateProcess(proc, 1)
+				else
+					-- load error
+					Kocos.sendSignal(proc, "SIGTRAP", err)
 				end
-			end
-			for _, fd in ipairs(toClose) do
-				local res = proc.fds[fd]
-				Kocos.handles.close(res)
-				proc.fds[fd] = nil
-			end
-			return true
-		end
+			end,
+			modules = {},
+		}
+	end
+	for _, mod in pairs(Kocos.mods) do
+		local img, err = mod("PROC-binfmt", path, data, namespace, env)
+		if img or err then return img, err end
+	end
+	return nil, Kocos.ENOEXEC
+end
+
+---@param proc Kocos.vmproc
+function Kocos.resumeProcess(proc)
+	-- recursive resume is illegal!
+	if #Kocos.procStack ~= 1 then error("recursive resume") end
+	if proc.state ~= "running" then return end
+	if proc.stopped then return end
+	if not proc.coro then return end
+	if coroutine.status(proc.coro) ~= "suspended" then return end
+	Kocos.procStack = proc.resumeTo or {Kocos.kernelProcess, proc}
+	Kocos.execDeadline = computer.uptime() + Kocos.defaultExecTime
+	local ok, err = Kocos.resume(proc.coro)
+	proc.resumeTo = Kocos.procStack
+	Kocos.procStack = {Kocos.kernelProcess}
+
+	if not ok then
+		Kocos.printkf(Kocos.L_ERROR, "Process %d crashed: %s", proc.pid, err)
+		Kocos.sendSignal(proc, "SIGTRAP", debug.traceback(proc.coro, err))
+		return
 	end
 
-	return nil, Kocos.errno.ENOEXEC
-end
+	-- killed
+	if proc.state ~= "running" then return end
 
---- A function which can be used as the thread when no special
---- initialization needs to happen
-function process.basicThread()
-	require("_start", true)
-end
-
----@param pid integer
-function process.isDead(pid)
-	return not process.allProcs[pid]
-end
-
----@param proc Kocos.process
-function process.isRunning(proc)
-	return proc.state == "running"
-end
-
----@param proc Kocos.process
-function process.isBlocked(proc)
-	while #proc.blockUntil > 0 do -- best feature in all of gaming
-		if proc.blockUntil[1]() then
-			-- holy shit we're free
-			table.remove(proc.blockUntil, 1)
-		else
-			-- darn
-			return true
-		end
+	-- coroutine gone
+	if coroutine.status(proc.coro) == "dead" then
+		local exit = err
+		if type(exit) ~= "number" then exit = 0 end
+		Kocos.terminateProcess(proc, exit)
 	end
+end
+
+---@param proc Kocos.vmproc
+---@param victim Kocos.vmproc
+function Kocos.isMasterProcessOf(proc, victim)
+	if proc.uid == 0 then return true end -- root is master of all
+	if proc == victim then return true end
+	if victim.parent then return Kocos.isMasterProcessOf(proc, victim.parent) end
 	return false
 end
 
----@param proc Kocos.process
----@param condition Kocos.process.condition
-function process.blockUntil(proc, condition)
-	table.insert(proc.blockUntil, condition)
-	if proc.thread == coroutine.running() then
-		coroutine.yield()
-	elseif process.current.pid == proc.pid then
-		-- it seems as if we are in a signal handler or callback on another process' thread
-		-- this is like categorically awful situation, but we can still work with it
-		while process.isBlocked(proc) do
-			coroutine.yield()
+function Kocos.tickProcesses()
+	for _, proc in pairs(Kocos.processes) do
+		Kocos.resumeProcess(proc)
+	end
+end
+
+---@param level? integer
+function syscalls.getpid(level)
+	level = level or 0
+
+	local proc = Kocos.procStack[#Kocos.procStack - level]
+	if not proc then return nil, Kocos.ESRCH end
+	return proc.pid
+end
+
+function syscalls.proclocal()
+	return Kocos.currentProcess().proclocal
+end
+
+---@return integer[]
+function syscalls.getprocs()
+	local pids = {}
+	for pid in pairs(Kocos.processes) do
+		table.insert(pids, pid)
+	end
+	return pids
+end
+
+---@param uid integer
+---@param pid? integer
+---@return boolean, string?
+function syscalls.setuid(uid, pid)
+	local proc = Kocos.currentProcess()
+	if proc.uid ~= 0 then return false, Kocos.EACCESS end
+	pid = pid or proc.pid
+	local target = Kocos.processes[pid]
+	if not target then return false, Kocos.ESRCH end
+	target.uid = uid
+	return true
+end
+
+---@param gid integer
+---@param pid? integer
+---@return boolean, string?
+function syscalls.setgid(gid, pid)
+	local proc = Kocos.currentProcess()
+	if proc.uid ~= 0 then return false, Kocos.EACCESS end
+	pid = pid or proc.pid
+	local target = Kocos.processes[pid]
+	if not target then return false, Kocos.ESRCH end
+	target.gid = gid
+	return true
+end
+
+function syscalls.getuid()
+	return Kocos.currentProcess().uid
+end
+
+function syscalls.getgid()
+	return Kocos.currentProcess().gid
+end
+
+function syscalls.environ()
+	return Kocos.currentProcess().env
+end
+
+function syscalls.argv()
+	return Kocos.currentProcess().argv
+end
+
+---@param time number
+function syscalls.sleep(time)
+	if type(time) ~= "number" then return nil, Kocos.EINVAL end
+	local start = computer.uptime()
+	local deadline = start + time
+	while computer.uptime() < deadline do
+		Kocos.sysyield()
+	end
+	-- Returns exact amount waited
+	return computer.uptime() - start
+end
+
+---@class Kocos.vmpinfo
+---@field argv? string[]
+---@field environ? table<string, string>
+---@field uid? integer
+---@field gid? integer
+---@field parent? integer
+---@field kmodules? string[]
+---@field daemon? string
+---@field tracer? integer
+---@field exitcode? integer
+---@field cwd? string
+---@field exe? string
+---@field root? string
+---@field namespace? _G
+---@field children? integer[]
+---@field signals? integer[]
+
+---@param pid integer
+---@vararg "args"|"env"|"uid"|"gid"|"parent"|"tree"|"state"|"namespace"|"signals"
+---@return Kocos.vmpinfo?, string?
+function syscalls.getprocinfo(pid, ...)
+	local proc = Kocos.currentProcess()
+	local target = Kocos.processes[pid]
+	if not target then return nil, Kocos.ESRCH end
+	local isTrusted = Kocos.isMasterProcessOf(proc, target)
+	---@type Kocos.vmpinfo
+	local info = {}
+	local vlen = select("#", ...)
+	for i=1, vlen do
+		local v = select(i, ...)
+		if v == "args" then
+			info.argv = table.copy(target.argv)
+		elseif v == "env" then
+			info.environ = table.copy(target.env)
+		elseif v == "uid" then
+			info.uid = target.uid
+		elseif v == "gid" then
+			info.gid = target.gid
+		elseif v == "parent" then
+			if target.parent then info.parent = target.parent.pid end
+		elseif v == "tree" then
+			if target.parent then info.parent = target.parent.pid end
+			info.children = {}
+			for cpid in pairs(target.children) do
+				table.insert(info.children, cpid)
+			end
+		elseif v == "state" then
+			if target.parent then info.parent = target.parent.pid end
+			if target.debugger then info.tracer = target.debugger.pid end
+			info.kmodules = table.copy(target.boundKmod)
+			info.exitcode = target.exitcode
+			info.exe = target.exe
+			info.cwd = target.cwd
+			info.root = target.root
+		elseif v == "namespace" then
+			if isTrusted then info.namespace = target.namespace end
+		elseif v == "signals" then
+			info.signals = {}
+			for sig in pairs(target.signalHandlers) do
+				table.insert(info.signals, sig)
+			end
 		end
 	end
+	return info
 end
 
----@param proc Kocos.process
-function process.allowedTime(proc)
-	return proc.desiredExecTime or 0.2
-end
+---@param f function
+---@return integer?, string?
+function syscalls.fork(f)
+	if type(f) ~= "function" then return nil, Kocos.EINVAL end
 
----@param proc Kocos.process
-function process.resume(proc)
-	if proc.stopped then return end
-	if process.isBlocked(proc) then return end
-	if not process.isRunning(proc) then return end
-	if coroutine.status(proc.thread) ~= "suspended" then return end
-	local old = process.current
-	process.current = proc.reEnterAs or proc
-	local oldExec = process.execDeadline
-	process.execDeadline = computer.uptime() + process.allowedTime(proc)
-	local ok, err = coroutine.resume(proc.thread)
-	-- TODO: compute how "nice" the value is
-	proc.reEnterAs = process.current
-	if proc.reEnterAs == proc then proc.reEnterAs = nil end
-	process.execDeadline = oldExec
-	process.current = old
-	if not ok then
-		Kocos.printkf(Kocos.L_ERROR, "Process %d crashed: %s", proc.pid, debug.traceback(proc.thread, err))
-		process.raise(proc, process.SIGTRAP, debug.traceback(proc.thread, err))
-		return
+	local proc = Kocos.currentProcess()
+
+	---@type Kocos.vmproc
+	local child = {
+		argv = table.copy(proc.argv),
+		env = table.copy(proc.env),
+		signalHandlers = {},
+		boundKmod = {},
+		modules = table.copy(proc.modules),
+		pid = npid,
+		children = {},
+		parent = proc,
+		cwd = proc.cwd,
+		root = proc.root,
+		exe = proc.exe,
+		fds = {},
+		exitcode = proc.exitcode,
+		uid = proc.uid,
+		gid = proc.gid,
+		namespace = proc.namespace,
+		proclocal = {},
+		state = "running",
+		stopped = false,
+		coro = coroutine.create(f),
+		daemon = nil,
+		debugger = nil,
+		desiredExecTime = nil,
+		ev_listener = nil,
+	}
+
+	-- Copy all the damn file descriptors
+	for fd, h in pairs(proc.fds) do
+		child.fds[fd] = h
+		h.rc = h.rc + 1
 	end
-	if not process.isRunning(proc) then return end
-	if coroutine.status(proc.thread) == "dead" then
-		local exit = err
-		if type(exit) ~= "number" then exit = 0 end
-		process.terminate(proc, exit)
+
+	proc.children[child.pid] = child
+	Kocos.processes[child.pid] = child
+	npid = npid + 1
+	return child.pid
+end
+
+---@param path string
+---@param argv? string[]
+---@param env? table<string, string>
+---@param namespace? _G
+---@return boolean, string?
+function syscalls.exec(path, argv, env, namespace)
+	local proc = Kocos.currentProcess()
+	argv = argv or {}
+	env = env or proc.env
+	namespace = namespace or proc.namespace
+	argv[0] = argv[0] or path
+
+	local stat, err = syscalls.stat(path)
+	if not stat then return nil, err end
+
+	if not Kocos.permCheck(stat.perms, Kocos.P_EXECUTABLE, proc.uid == stat.uid, proc.gid == stat.gid) then
+		return false, Kocos.EACCESS
+	end
+
+	local code, err = readfile(path)
+	if not code then return false, err end
+	local truepath = Kocos.realPathFor(proc, path)
+
+	local img, err = Kocos.parseExecutable(truepath, code, namespace, env)
+	if not img then return false, err end
+
+	local toClose = {}
+
+	for fd, handle in pairs(proc.fds) do
+		if (handle.flags & Kocos.O_CLOEXEC) ~= 0 then
+			table.insert(toClose, fd)
+		end
+	end
+
+	for _, fd in ipairs(toClose) do syscalls.close(fd) end
+
+	proc.argv = table.copy(argv)
+	proc.env = table.copy(env)
+	proc.namespace = namespace
+	proc.modules = img.modules
+	proc.coro = coroutine.create(img.init)
+
+	-- delete anything else that might've been there, because it's invalid now
+	proc.resumeTo = {Kocos.kernelProcess, proc}
+	Kocos.sysyield()
+	return true
+end
+
+function syscalls.signal(signal, handler)
+	local proc = Kocos.currentProcess()
+	proc.signalHandlers[signal] = handler
+	return true
+end
+
+function syscalls.registerDaemon(daemon, handler)
+	if Kocos.daemons[daemon] then
+		return nil, Kocos.EADDRINUSE
+	end
+	local proc = Kocos.currentProcess()
+	if proc.daemon then return nil, Kocos.EADDRINUSE end
+	Kocos.daemons[daemon] = {
+		proc = proc,
+		callback = handler,
+	}
+	return true
+end
+
+---@param daemon string
+---@return integer?, string?
+function syscalls.getDaemonPid(daemon)
+	local d = Kocos.daemons[daemon]
+	if not d then return nil, Kocos.ESRCH end
+	return d.proc.pid
+end
+
+---@return string[]
+function syscalls.listDaemons()
+	local daemons = {}
+	for addr in pairs(Kocos.daemons) do
+		table.insert(daemons, addr)
+	end
+	return daemons
+end
+
+---@param daemon string
+---@return ...
+function syscalls.invokeDaemon(daemon, ...)
+	local proc = Kocos.currentProcess()
+
+	local d = Kocos.daemons[daemon]
+	if not d then return nil, Kocos.ESRCH end
+	local t = Kocos.procCall(d.proc, d.callback, proc.pid, ...)
+	if t[1] then
+		return table.unpack(t, 2)
+	else
+		return nil, tostring(t[2])
 	end
 end
 
----@param proc Kocos.process
-function process.isRoot(proc)
-	return proc.uid == 0 or proc.euid == 0
-end
-
-function process.run()
-	for _, proc in pairs(process.allProcs) do
-		process.resume(proc)
+function syscalls.waitpid(pid)
+	local proc = Kocos.processes[pid]
+	if not proc then return 0 end
+	while proc.state == "running" do
+		Kocos.sysyield()
 	end
+	return proc.exitcode
 end
 
-local rawload = load
+---@param f? function
+function syscalls.mklistener(f)
+	local proc = Kocos.currentProcess()
+	if proc.uid ~= 0 then
+		return nil, Kocos.EACCESS
+	end
+	if proc.ev_listener then
+		Kocos.forget(proc.ev_listener)
+		proc.ev_listener = nil
+	end
+	if f then
+		local function wrapped(...)
+			Kocos.procCall(proc, f, ...)
+		end
+		proc.ev_listener = wrapped
+		Kocos.listen(wrapped)
+	end
+	return true
+end
 
--- safe version of load
+function syscalls.mountDev(path, devAddr, cmdline)
+	local l, err = syscalls.list(path)
+	if not l then return false, err end
+	if #l > 0 then return false, Kocos.ENOTEMPTY end
 
----@param chunk function|string
----@param chunkname? string
----@param mode? "t"|"b"|"bt"
----@param env? table
----@return function?, string? error_message
+	if Kocos.isMounted(devAddr) then
+		return false, Kocos.EADDRINUSE
+	end
+
+	if not component.type(devAddr) then
+		return false, Kocos.ENODEV
+	end
+
+	local proc = Kocos.currentProcess()
+	if proc.uid ~= 0 then return end
+	local truepath = Kocos.realPathFor(proc, path)
+	local mntpath = truepath:sub(2)
+
+	if Kocos.mounts[mntpath] then
+		return false, Kocos.EADDRNOTAVAIL
+	end
+
+	local dev = component.proxy(devAddr)
+	local mnt, err = Kocos.mountFor(dev, cmdline)
+	if not mnt then return false, err end
+
+	Kocos.mounts[mntpath] = mnt
+	return true
+end
+
+syscalls.sysyield = Kocos.sysyield
+
+function syscalls.kill(pid, signal, ...)
+	local cur = Kocos.currentProcess()
+	local target = Kocos.processes[pid]
+	if not target then return nil, Kocos.ESRCH end
+	-- signals that are just not sendable even by root,
+	-- cuz their meaning would be violated
+	if signal == "SIGTRAP" then return nil, Kocos.EPERM end
+	if signal == "SIGCHLD" then return nil, Kocos.EPERM end
+	if signal == "SIGABRT" then return nil, Kocos.EPERM end
+	local allowed = cur.uid == 0 or cur.uid == target.uid
+	if not allowed then
+		return nil, Kocos.EACCESS
+	end
+	Kocos.sendSignal(target, signal, ...)
+	return true
+end
+
+Kocos.rawLoad = load
 function load(chunk, chunkname, mode, env)
-	return rawload(chunk, chunkname, mode, env or process.current.namespace)
+	local proc = Kocos.currentProcess()
+	return Kocos.rawLoad(chunk, chunkname, mode, env or proc.namespace)
 end
 
-Kocos.printk(Kocos.L_DEBUG, "process system loaded")
+---@param req string
+---@param path string
+---@param data string
+---@param namespace _G
+---@param env table<string, string>
+function Kocos._defaultLuaExec(req, path, data, namespace, env)
+	if req ~= "PROC-binfmt" then return end
+	if data:sub(1, 6) ~= "--!lua" then return end
 
-Kocos.printk(Kocos.L_DEBUG, "creating kernel process")
-process.current = process.create(coroutine.running(), _G, 0, 0)
-process.root = process.current
+	local init, err = Kocos.rawLoad(data, "=" .. path, nil, namespace)
+	if not init then return nil, err end
 
-Kocos.process = process
+	local luaRT = env["LUA_RT"] or Kocos.getCmdlineStr("LUA_RT", "luart")
+
+	---@type Kocos.procimage
+	return {
+		init = function()
+			require(luaRT)
+			local proc = Kocos.currentProcess()
+			local ok, exitcode = xpcall(init, debug.traceback, table.unpack(proc.argv))
+			if ok then
+				if type(exitcode) == "number" then
+					Kocos.terminateProcess(proc, exitcode)
+				else
+					Kocos.terminateProcess(proc, 0)
+				end
+			else
+				if proc.pid == 1 then
+					Kocos.panickf("Init crashed: %s", exitcode)
+				end
+				Kocos.sendSignal(proc, "SIGTRAP", exitcode)
+				Kocos.terminateProcess(proc, 1)
+			end
+		end,
+		modules = {},
+	}
+end
+
+Kocos.mods["KOCOS_LUAEXEC"] = Kocos._defaultLuaExec

@@ -1,10 +1,12 @@
 --- Before init.lua, because it needs these utilities
-package = package or {}
-package.preload = {}
-package.loaded = {}
-package.path = "/lib/?.lua;/lib/?/init.lua;?.lua;?/init.lua;/usr/lib/?.lua;/usr/lib/?/init.lua;/usr/local/lib/?.lua;/usr/local/lib/?/init.lua"
-package.cpath = "lib?.so;/lib/lib?.so;/usr/lib/lib?.so;/usr/local/lib/lib?.so"
-package.config = "/\n;\n?\n!\n-"
+if not package then
+	package = {}
+	package.preload = {}
+	package.loaded = {}
+	package.path = "/lib/?.lua;/lib/?/init.lua;?.lua;?/init.lua;/usr/lib/?.lua;/usr/lib/?/init.lua;/usr/local/lib/?.lua;/usr/local/lib/?/init.lua"
+	package.cpath = "lib?.so;/lib/lib?.so;/usr/lib/lib?.so;/usr/local/lib/lib?.so"
+	package.config = "/\n;\n?\n!\n-"
+end
 
 ---@generic T
 ---@param t T
@@ -392,11 +394,11 @@ end
 ---@param cmdline table<string, string>
 ---@return string
 function Kocos.encodeCmdline(cmdline)
-	local pairs = {}
+	local p = {}
 	for k, v in pairs(cmdline) do
-		table.insert(pairs, k .. "=" .. v)
+		table.insert(p, k .. "=" .. v)
 	end
-	return table.concat(pairs, "\t")
+	return table.concat(p, "\t")
 end
 
 ---@param name string
@@ -424,10 +426,8 @@ end
 if argv[1] == "kocos" then
 	Kocos.cmdline = Kocos.parseCmdline(argv[2] or "")
 	Kocos.ramfs = argv[3]
-elseif not argv[1] then
-	-- generic boot protocol
 else
-	error("Unknown boot protocol")
+	-- unknown boot protocol, but no error
 end
 
 Kocos.disableScreen = Kocos.getCmdlineBool("NO_SCR", false)
@@ -450,6 +450,11 @@ local serial = component.list("serial")()
 local gpu, screen = component.list("gpu")(), component.list("screen")()
 if gpu and screen then
 	component.invoke(gpu, "bind", screen)
+	component.invoke(gpu, "setForeground", 0xFFFFFF)
+	component.invoke(gpu, "setBackground", 0x000000)
+	local w, h = component.invoke(gpu, "maxResolution")
+	component.invoke(gpu, "setResolution", w, h)
+	component.invoke(gpu, "fill", 1, 1, w, h, " ")
 end
 local currentY = 0
 
@@ -538,7 +543,7 @@ Kocos.printkf(Kocos.L_DEBUG, "package.path: %s", package.path)
 Kocos.printkf(Kocos.L_DEBUG, "package.cpath: %s", package.cpath)
 
 ---@diagnostic disable:lowercase-global
----@type table<string, function>
+---@class Kocos.syscalls
 syscalls = {} -- syscalls defined later in other files
 
 Kocos.execDeadline = math.huge
@@ -561,7 +566,7 @@ function syscall(sysname, ...)
 	local sysfunc = syscalls[sysname]
 	if not sysfunc then return nil, Kocos.ENOSYS end
 
-	local t = {pcall(sysfunc, ...)}
+	local t = {xpcall(sysfunc, debug.traceback, ...)}
 
 	if proc.debugger then
 		Kocos.sendSignal(proc.debugger, "SYSRET", sysname, {...}, t)
@@ -638,9 +643,10 @@ Kocos.O_CLOEXEC = 2
 ---@field callback fun(ev: Kocos.descriptorEv, ...)
 
 ---@alias Kocos.descriptorHandler fun(desc: table|Kocos.descriptor, ev: Kocos.descriptorReq, ...): ...
+---@alias Kocos.descriptorType "file"|"pipe"|"device"|"socket"|"tty"|"timer"
 
 ---@class Kocos.descriptor
----@field type "file"|"pipe"|"device"|"socket"|"tty"|"timer"
+---@field type Kocos.descriptorType
 ---@field state string
 ---@field rc integer
 ---@field flags integer
@@ -866,7 +872,7 @@ do
 	function component.add(vdev)
 		if component.type(vdev.address) then return end
 		vComponents[vdev.address] = vdev
-		Kocos.event.push("component_added", vdev.address, vdev.type)
+		Kocos.push("component_added", vdev.address, vdev.type)
 		return vdev.address
 	end
 
@@ -875,7 +881,7 @@ do
 		local v = vComponents[address]
 		if not v then return end
 		vComponents[address] = nil
-		Kocos.event.push("component_removed", v.address, v.type)
+		Kocos.push("component_removed", v.address, v.type)
 	end
 
 	---@param address string
@@ -965,6 +971,7 @@ do
 		return cinvoke(address, method, ...)
 	end
 
+	---@return Kocos.dev?, string?
 	function component.proxy(address)
 		if not component.isVirtual(address) then return cproxy(address) end
 		local type, reason = component.type(address)
@@ -1024,12 +1031,12 @@ function component._defaultHandler(ev, addr, type)
 	if ev == "component_added" then
 		if primCache[type] then return end
 		primCache[type] = component.proxy(addr)
-		Kocos.event.push("primary_added", type)
+		Kocos.push("primary_added", type)
 	end
 	if ev == "component_removed" then
 		if not primCache[type] then return end
 		if primCache[type].address ~= addr then return end
-		Kocos.event.push("primary_removed", type)
+		Kocos.push("primary_removed", type)
 		primCache[type] = nil
 	end
 end
@@ -1267,7 +1274,7 @@ function Kocos.loadModuleCode(mod, code, chunkname)
 	local ok, handler = pcall(f)
 	if not ok then return false, handler end
 	if type(handler) ~= "function" then return false, Kocos.EHWPOISON end
-	Kocos.mods[code] = handler
+	Kocos.mods[mod] = handler
 	return true
 end
 
@@ -2068,7 +2075,12 @@ Kocos.P_OWNERSHIFT = 6
 
 Kocos.P_DEFAULT = 6*64 + 6*8 + 6
 Kocos.P_ALL = 511
+Kocos.P_NONE = 0
 
+---@param permBits integer
+---@param bit integer
+---@param owned boolean
+---@param grouped boolean
 function Kocos.permCheck(permBits, bit, owned, grouped)
 	if owned then
 		permBits = permBits >> Kocos.P_OWNERSHIFT
@@ -2098,14 +2110,6 @@ end
 ---@field isReadonly fun(): string
 ---@field getPartitionType fun(): string
 ---@field getSectorOffset fun(): integer
-
----@param blockdev Kocos.blockdev
----@param partaddr string
----@param sectorOff integer
----@param capacity integer
-function Kocos.mkblockpart(blockdev, partaddr, sectorOff, capacity)
-	-- TODO: register blockdev
-end
 
 ---@param blockdev Kocos.blockdev
 ---@param partitions string[]
@@ -2252,7 +2256,7 @@ end
 ---@return Kocos.mountState?, string
 function Kocos.resolvePath(path, uid, gid, permbit, keepLink, keepMissing)
 	path = Kocos.canonicalPath(path)
-	local checkPerms = Kocos.getCmdlineBool("FS_RECURSIVEPERM", false)
+	local checkPerms = Kocos.getCmdlineBool("FS_RECURSIVEPERM", true)
 	local maxLinkCount = Kocos.getCmdlineNum("FS_MAXLINK", 4)
 	local linkCount = 0
 
@@ -2561,10 +2565,10 @@ function Kocos._defaultManagedFS(req, ...)
 
 		if state.frecords and state.frecords[path] then
 			local rec = state.frecords[path]
-			stat.type = rec.ftype
-			stat.perms = rec.perms
-			stat.uid = rec.uid
-			stat.gid = rec.gid
+			stat.type = rec.ftype or stat.type
+			stat.perms = rec.perms or 0
+			stat.uid = rec.uid or 0
+			stat.gid = rec.gid or 0
 		else
 			stat.perms = stat.type == "directory" and Kocos.P_ALL or Kocos.P_DEFAULT
 		end
@@ -2581,6 +2585,8 @@ function Kocos._defaultManagedFS(req, ...)
 			-- may be one of the most devastating powers there can be.
 			stat.perms = 6*64 + 4*8 + 4
 		end
+
+		stat.perms = stat.perms or 0
 
 		return stat
 	end
@@ -2635,6 +2641,56 @@ function Kocos._fifoHandler(h, req, ...)
 	if req == "close" then return true end
 
 	return nil, Kocos.EBADF
+end
+
+---@type Kocos.descriptorHandler
+function Kocos._romFileHandler(desc, req, ...)
+	---@type string
+	local data = desc._data
+	if req == "read" then
+		---@type integer
+		local len = ...
+		if len > #data then len = #data end
+		len = math.floor(len)
+
+		if desc._pos >= #data then return end
+
+		local chunk = data:sub(desc._pos + 1, desc._pos + len)
+		desc._pos = desc._pos + #chunk
+		return chunk
+	end
+	if req == "seek" then
+		---@type "set"|"cur"|"end", integer
+		local whence, off = ...
+
+		if whence == "set" then
+			data._pos = off
+		elseif whence == "cur" then
+			data._pos = data._pos + off
+		elseif whence == "end" then
+			desc._pos = #data - off
+		end
+		desc._pos = math.clamp(desc._pos, 0, #data)
+		return desc._pos
+	end
+	if req == "close" then return true end
+	return nil, Kocos.EBADF
+end
+
+---@param type Kocos.descriptorType
+---@param data string
+function Kocos.romFile(type, data)
+	---@type Kocos.descriptor
+	return {
+		type = type,
+		state = "",
+		pid = 0,
+		flags = 0,
+		rc = 1,
+		handler = Kocos._romFileHandler,
+		_pos = 0,
+		_data = data,
+	}
 end
 
 ---@param path string
@@ -3007,6 +3063,52 @@ function syscalls.getMounts()
 		mnt[state.device] = "/" .. p
 	end
 	return mnt
+end
+
+---@param path string
+function syscalls.isMount(path)
+	local proc = Kocos.currentProcess()
+	local mntpath = Kocos.realPathFor(proc, path):sub(2)
+	return Kocos.mounts[mntpath] ~= nil
+end
+
+---@param path string
+---@param device string
+---@param cmdline? string
+---@return boolean, string?
+function syscalls.mount(path, device, cmdline)
+	if Kocos.isMounted(device) then
+		return false, Kocos.EADDRINUSE
+	end
+	local proxy = component.proxy(device)
+	if not proxy then
+		return false, Kocos.ENODEV
+	end
+	local list, err = syscalls.list(path)
+	if not list then return false, err end
+	if #list > 0 then return false, Kocos.ENOTEMPTY end
+
+	local proc = Kocos.currentProcess()
+	local mntpath = Kocos.realPathFor(proc, path):sub(2)
+	if Kocos.mounts[mntpath] then
+		return false, Kocos.EEXIST
+	end
+
+	local state, err = Kocos.mountFor(proxy, cmdline)
+	if not state then return false, err end
+
+	Kocos.mounts[mntpath] = state
+	return true
+end
+
+function syscalls.umount(path)
+	local proc = Kocos.currentProcess()
+	local mntpath = Kocos.realPathFor(proc, path):sub(2)
+	if not Kocos.mounts[mntpath] then
+		return false, Kocos.ENOENT
+	end
+
+	Kocos.removeMount(mntpath)
 end
 
 ---@return boolean, string?

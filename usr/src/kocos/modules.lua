@@ -42,7 +42,7 @@ function Kocos.loadModuleCode(mod, code, chunkname)
 	local ok, handler = pcall(f)
 	if not ok then return false, handler end
 	if type(handler) ~= "function" then return false, Kocos.EHWPOISON end
-	Kocos.mods[code] = handler
+	Kocos.mods[mod] = handler
 	return true
 end
 

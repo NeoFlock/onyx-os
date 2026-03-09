@@ -1,3 +1,13 @@
+--- Before init.lua, because it needs these utilities
+if not package then
+	package = {}
+	package.preload = {}
+	package.loaded = {}
+	package.path = "/lib/?.lua;/lib/?/init.lua;?.lua;?/init.lua;/usr/lib/?.lua;/usr/lib/?/init.lua;/usr/local/lib/?.lua;/usr/local/lib/?/init.lua"
+	package.cpath = "lib?.so;/lib/lib?.so;/usr/lib/lib?.so;/usr/local/lib/lib?.so"
+	package.config = "/\n;\n?\n!\n-"
+end
+
 ---@generic T
 ---@param t T
 ---@return T
@@ -345,51 +355,4 @@ function package.searchpath(name, path, sep, rep)
 			return toCheck
 		end
 	end
-end
-
-function dofile(filename, ...)
-	return assert(loadfile(filename))(...)
-end
-
-function loadfile(filename, mode, env)
-	local code, err = readfile(filename)
-	if not code then return nil, err end
-	if code:sub(1,2) == "#!" then
-		-- shebang!
-		local ln = string.find(code, "\n") or #code
-		code = code:sub(ln+1)
-	end
-	return load(code, "=" .. filename, mode, env)
-end
-
----@param bufsize? integer
----@return string?, string?
-function readfile(filename, bufsize)
-	local fd, err = syscall("open", filename, "r")
-	if err then return nil, err end
-
-	local code = {}
-	while true do
-		local data, err2 = syscall("read", fd, bufsize or math.huge)
-		if err2 then
-			syscall("close", fd)
-			return nil, err2
-		end
-		if not data then break end
-		table.insert(code, data)
-	end
-
-	syscall("close", fd)
-	return table.concat(code)
-end
-
----@param data string
----@return boolean, string?
-function writefile(filename, data)
-	local fd, err = syscall("open", filename, "w")
-	if not fd then return false, err end
-
-	local ok, err2 = syscall("write", fd, data)
-	syscall("close", fd)
-	return ok, err2
 end

@@ -12,6 +12,7 @@ local d = assert(k.list(path))
 local dirColor = "\x1b[34m"
 local linkColor = "\x1b[31m"
 local devColor = "\x1b[33m"
+local mntColor = "\x1b[32m"
 local exeColor = "\x1b[92m"
 
 local fixedD = {}
@@ -35,10 +36,13 @@ end
 -- apply colorization if TTY
 if terminal.isatty(terminal.STDOUT) then
 	for i, f in ipairs(d) do
-		local s = assert(k.stat(k.join(path, f)))
+		local p = k.join(path, f)
+		local s = assert(k.stat(p))
 		local big3 = s.perms | (s.perms >> 3) | (s.perms >> 6)
 		local ff = fixedD[i] or f
-		if s.type == "directory" then
+		if k.isMount(p) then
+			d[i] = mntColor .. ff .. "\x1b[0m"
+		elseif s.type == "directory" then
 			d[i] = dirColor .. ff .. "\x1b[0m"
 		elseif s.type == "symlink" then
 			d[i] = linkColor .. ff .. "\x1b[0m"

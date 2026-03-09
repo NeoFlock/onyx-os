@@ -36,11 +36,11 @@ end
 ---@param cmdline table<string, string>
 ---@return string
 function Kocos.encodeCmdline(cmdline)
-	local pairs = {}
+	local p = {}
 	for k, v in pairs(cmdline) do
-		table.insert(pairs, k .. "=" .. v)
+		table.insert(p, k .. "=" .. v)
 	end
-	return table.concat(pairs, "\t")
+	return table.concat(p, "\t")
 end
 
 ---@param name string
@@ -68,10 +68,8 @@ end
 if argv[1] == "kocos" then
 	Kocos.cmdline = Kocos.parseCmdline(argv[2] or "")
 	Kocos.ramfs = argv[3]
-elseif not argv[1] then
-	-- generic boot protocol
 else
-	error("Unknown boot protocol")
+	-- unknown boot protocol, but no error
 end
 
 Kocos.disableScreen = Kocos.getCmdlineBool("NO_SCR", false)
@@ -94,6 +92,11 @@ local serial = component.list("serial")()
 local gpu, screen = component.list("gpu")(), component.list("screen")()
 if gpu and screen then
 	component.invoke(gpu, "bind", screen)
+	component.invoke(gpu, "setForeground", 0xFFFFFF)
+	component.invoke(gpu, "setBackground", 0x000000)
+	local w, h = component.invoke(gpu, "maxResolution")
+	component.invoke(gpu, "setResolution", w, h)
+	component.invoke(gpu, "fill", 1, 1, w, h, " ")
 end
 local currentY = 0
 
@@ -182,7 +185,7 @@ Kocos.printkf(Kocos.L_DEBUG, "package.path: %s", package.path)
 Kocos.printkf(Kocos.L_DEBUG, "package.cpath: %s", package.cpath)
 
 ---@diagnostic disable:lowercase-global
----@type table<string, function>
+---@class Kocos.syscalls
 syscalls = {} -- syscalls defined later in other files
 
 Kocos.execDeadline = math.huge
@@ -205,7 +208,7 @@ function syscall(sysname, ...)
 	local sysfunc = syscalls[sysname]
 	if not sysfunc then return nil, Kocos.ENOSYS end
 
-	local t = {pcall(sysfunc, ...)}
+	local t = {xpcall(sysfunc, debug.traceback, ...)}
 
 	if proc.debugger then
 		Kocos.sendSignal(proc.debugger, "SYSRET", sysname, {...}, t)
@@ -282,9 +285,10 @@ Kocos.O_CLOEXEC = 2
 ---@field callback fun(ev: Kocos.descriptorEv, ...)
 
 ---@alias Kocos.descriptorHandler fun(desc: table|Kocos.descriptor, ev: Kocos.descriptorReq, ...): ...
+---@alias Kocos.descriptorType "file"|"pipe"|"device"|"socket"|"tty"|"timer"
 
 ---@class Kocos.descriptor
----@field type "file"|"pipe"|"device"|"socket"|"tty"|"timer"
+---@field type Kocos.descriptorType
 ---@field state string
 ---@field rc integer
 ---@field flags integer

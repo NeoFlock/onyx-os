@@ -42,6 +42,7 @@ local function permsOf(path)
 	if path == "etc/passwd" then return "rw-r--r--" end
 	if path == "etc/group" then return "rw-r--r--" end
 	if path == "etc/shadow" then return "rw-------" end
+	if path == "etc/fstab" then return "rw-r--r--" end
 	if path == "home/helloWorld.lua" then return "rwxrwxrwx" end
 	if path == "etc/onit.d" then return "rw-r--r--" end
 	if string.startswith(path, "etc/onit.d/") then return "rw-r--r--" end
@@ -131,46 +132,19 @@ local buildInfo = {
 	kocos_metadata = {
 		type = "buildmeta",
 	},
-	new_kocos = {
-		type = "cat",
-		luamin = os.getenv("ONYX_MIN") ~= nil,
-		segment = os.getenv("ONYX_SEGMENT") ~= nil,
-		files = {
-			"usr/src/new_kocos/utils.lua",
-			"usr/src/new_kocos/init.lua",
-			"usr/src/new_kocos/event.lua",
-			"usr/src/new_kocos/component.lua",
-			"usr/src/new_kocos/errno.lua",
-			"usr/src/new_kocos/modules.lua",
-			"usr/src/new_kocos/process.lua",
-			"usr/src/new_kocos/fs.lua",
-			"usr/src/new_kocos/boot.lua",
-		},
-		out = "boot/vmkocos",
-		deps = {},
-	},
 	kocos = {
 		type = "cat",
 		luamin = os.getenv("ONYX_MIN") ~= nil,
 		segment = os.getenv("ONYX_SEGMENT") ~= nil,
 		files = {
-			"usr/src/kocos/bootstrap.lua",
 			"usr/src/kocos/utils.lua",
+			"usr/src/kocos/init.lua",
 			"usr/src/kocos/event.lua",
 			"usr/src/kocos/component.lua",
-			"usr/src/kocos/printk.lua",
 			"usr/src/kocos/errno.lua",
-			"usr/src/kocos/drivers.lua",
-			os.getenv("ONYX_NODBG") and "" or "usr/src/kocos/debugger.lua",
-			"usr/src/kocos/ramfs.lua",
-			"usr/src/kocos/fs.lua",
-			"usr/src/kocos/devfs.lua",
+			"usr/src/kocos/modules.lua",
 			"usr/src/kocos/process.lua",
-			"usr/src/kocos/require.lua",
-			"usr/src/kocos/exec.lua",
-			"usr/src/kocos/net.lua",
-			"usr/src/kocos/handles.lua",
-			"usr/src/kocos/syscalls.lua",
+			"usr/src/kocos/fs.lua",
 			"usr/src/kocos/boot.lua",
 		},
 		out = "boot/vmkocos",
