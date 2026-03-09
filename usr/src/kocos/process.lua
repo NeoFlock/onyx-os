@@ -365,6 +365,13 @@ function Kocos.tickProcesses()
 	end
 end
 
+---@param code? integer
+function syscalls.exit(code)
+	code = code or 0
+	Kocos.terminateProcess(Kocos.currentProcess(), code)
+	Kocos.sysyield()
+end
+
 ---@param level? integer
 function syscalls.getpid(level)
 	level = level or 0

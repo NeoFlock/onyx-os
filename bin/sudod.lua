@@ -31,4 +31,5 @@ end)
 
 k.invokeDaemon("initd", "markComplete")
 
-k.blockUntil(k.getpid(), function() return false end)
+k.kill(k.getpid(), "SIGSTOP")
+coroutine.yield()

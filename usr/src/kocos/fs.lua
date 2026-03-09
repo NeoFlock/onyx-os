@@ -754,6 +754,19 @@ function syscalls.seek(fd, whence, off)
 	return Kocos.handleDescriptorRequest(f, "seek", whence, off)
 end
 
+---@param fd integer
+---@param action string
+---@return boolean, string?
+function syscalls.ioctl(fd, action, ...)
+	if type(fd) ~= "number" then return false, Kocos.EINVAL end
+	if type(action) ~= "string" then return false, Kocos.EINVAL end
+
+	local proc = Kocos.currentProcess()
+	local f = proc.fds[fd]
+	if not f then return false, Kocos.EBADF end
+	return Kocos.handleDescriptorRequest(f, "ioctl", action, ...)
+end
+
 ---@param path string
 ---@return string[]?, string?
 function syscalls.list(path)

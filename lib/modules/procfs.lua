@@ -20,6 +20,16 @@ local rootFiles = {
 		end
 		return table.concat(lines, "\n") .. "\n"
 	end,
+	kmodules = function()
+		local lines = {}
+		for mod in pairs(Kocos.mods) do
+			table.insert(lines, mod)
+		end
+		return table.concat(lines, "\n") .. "\n"
+	end,
+	version = function()
+		return string.format("%s\n%s\n%s\n", _KVERSION, _OSVERSION, _VERSION)
+	end,
 	uptime = function() return computer.uptime() .. "\n" end,
 	meminfo = function()
 		return string.format("Free: %d\nTotal: %d\n", computer.freeMemory(), computer.totalMemory())

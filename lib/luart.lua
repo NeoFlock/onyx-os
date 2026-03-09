@@ -2,16 +2,22 @@
 
 if not k then
 	---@type Kocos.syscalls
-	k = setmetatable({}, {
-		__mode = "v",
-		__index = function(t, sys)
-			local f = function(...)
-				return syscall(sys, ...)
-			end
-			rawset(t, sys, f)
-			return f
-		end,
-	})
+	k = {}
+	local l = assert(syscall("syscalls"))
+
+	for _, name in ipairs(l) do
+		k[name] = function(...)
+			return syscall(name, ...)
+		end
+	end
+	setmetatable(k, {__index = function(t, k)
+		if type(k) ~= "string" then return end
+		local f = function(...)
+			return syscall(k, ...)
+		end
+		rawset(t, k, f)
+		return f
+	end})
 end
 
 function print(...)

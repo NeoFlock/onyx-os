@@ -1,6 +1,7 @@
 --!lua
 
 print("Welcome to", _OSVERSION)
+print("Uptime: ", string.uptimefmt(k.uptime()))
 
 local userdb = require("userdb")
 local readline = require("readline")

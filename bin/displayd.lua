@@ -357,10 +357,6 @@ function evs.clipboard(keyboard, value)
 end
 
 assert(k.registerDaemon("displayd", function(cpid, action, ...)
-	if not k.isproot(cpid) then
-		--return nil, errnos.EACCESS
-	end
-
 	-- NASTY, might be a compromised process!
 	if type(action) ~= "string" then
 		return nil, errnos.EINVAL

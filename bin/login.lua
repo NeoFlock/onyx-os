@@ -9,12 +9,10 @@ assert(k.invokeDaemon("displayd", "mksignaler"))
 
 -- TODO: check for greeter program
 
-if k.fcntl(0, "F_GETFL") then
+if k.isatty(3) then
 	assert(k.exec("/bin/prompt.lua"))
 	return 0
 end
-
-k.setexectime(4)
 
 ---@type table<string, vtty>
 local screenTerms = {}

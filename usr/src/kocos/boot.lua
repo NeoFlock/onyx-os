@@ -51,6 +51,7 @@ end))
 
 Kocos.printk(Kocos.L_INFO, "Running event loop...")
 while true do
+	Kocos.tickProcesses()
 	if Kocos.shutdown == "halt" then
 		break
 	end
@@ -60,7 +61,7 @@ while true do
 	if Kocos.shutdown == "poweroff" then
 		computer.shutdown(false)
 	end
-
-	Kocos.tickProcesses()
+	-- for event listeners and timers
+	Kocos.execDeadline = computer.uptime() + Kocos.defaultExecTime
 	Kocos.pull(0.05)
 end

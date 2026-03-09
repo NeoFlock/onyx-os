@@ -15,7 +15,6 @@ while true do
 		local segTerm, segTermEnd = string.find(kernelCode, "--[[KOCOS_SEGMENT]]", nil, true)
 		if segTerm then
 			segment = segment + 1
-			component.invoke(kargs.debugger, "log", "segment: " .. segment)
 			local rawCode = string.sub(kernelCode, 1, segTerm-1)
 			local f = assert(load(rawCode, "=kocos_seg" .. segment))
 			f()
