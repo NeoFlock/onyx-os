@@ -205,6 +205,7 @@ local function runBuild(thing)
 
 		for _, path in ipairs(everything) do
 			local p = perms(permsOf(path))
+			print("writing metadata for " .. path .. "...")
 			table.insert(lines, string.format("%s %s 0 0 %d", path, ftype(path), p))
 		end
 

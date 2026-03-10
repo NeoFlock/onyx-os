@@ -502,14 +502,16 @@ function Kocos._defaultManagedFS(req, ...)
 			local ver = tonumber(headerInfo[2]) or math.huge
 			state.frecords = {}
 			if ver == 1 then
-				for i=3,#lines do
+				for i=4,#lines do
 					local parts = string.split(lines[i], " ")
-					state.frecords[parts[1]] = {
-						ftype = parts[2],
-						uid = tonumber(parts[3]) or 0,
-						gid = tonumber(parts[4]) or 0,
-						perms = tonumber(parts[5]) or Kocos.P_DEFAULT,
-					}
+					if #parts == 5 then
+						state.frecords[parts[1]] = {
+							ftype = parts[2] or "regular",
+							uid = tonumber(parts[3]) or 0,
+							gid = tonumber(parts[4]) or 0,
+							perms = tonumber(parts[5]) or Kocos.P_DEFAULT,
+						}
+					end
 				end
 			else
 				return nil, "unsupported metadata version"
@@ -530,7 +532,13 @@ function Kocos._defaultManagedFS(req, ...)
 				"PATH FTYPE OWNER GROUP PERMS",
 			}
 			for path, rec in pairs(state.frecords) do
-				table.insert(lines, string.format("%s %s %d %d %d", path, rec.ftype, rec.uid, rec.gid, rec.perms))
+				---@type Kocos.fstat?
+				local stat = Kocos._defaultManagedFS("FS-stat", state, path)
+				if stat then
+					table.insert(lines, string.format("%s %s %d %d %d", path, stat.type, stat.uid, stat.gid, stat.perms))
+				else
+					table.insert(lines, string.format("%s %s %d %d %d", path, rec.ftype, rec.uid, rec.gid, rec.perms))
+				end
 			end
 			local ser = table.concat(lines, "\n")
 			local f, err = state.dev.open(".kocos", "w")
