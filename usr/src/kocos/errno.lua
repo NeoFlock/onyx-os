@@ -48,6 +48,9 @@ Kocos.EXDEV = "invalid cross-device link"
 Kocos.EHOSTISDOWN = "host is unreachable"
 Kocos.ENOIMPL = "not implemented"
 Kocos.ENOSUPPORT = "not supported"
+Kocos.ENOSPC = "out of space"
+Kocos.ENOMEM = "not enough memory"
+Kocos.EBADDEV = "bad device type"
 
 ---@return table<string, string>
 function syscalls.errnos()

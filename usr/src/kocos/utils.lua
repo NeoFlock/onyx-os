@@ -336,6 +336,16 @@ function string.boottimefmt(t)
 	return string.format("%02dh%02dm%02.3fs", hours, mins, secs)
 end
 
+---@param bytes string
+function string.tonumBE(bytes)
+	local n = 0
+	for i=1,#bytes do
+		n = n * 256
+		n = n + bytes:byte(i, i)
+	end
+	return n
+end
+
 ---@param name string
 ---@param path string
 ---@param sep? string

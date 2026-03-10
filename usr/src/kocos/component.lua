@@ -14,7 +14,7 @@ do
 	---@field address string
 	---@field type string
 	---@field slot integer
-	---@field methods table<string, {getter: boolean, setter: boolean, direct: boolean, doc?: string}>
+	---@field methods table<string, {getter?: boolean, setter?: boolean, direct: boolean, doc?: string}>
 	---@field invoke fun(method: string, ...): ...
 
 	---@type table<string, Kocos.vdevice>

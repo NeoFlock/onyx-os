@@ -13,6 +13,9 @@ do
 	end
 end
 
+-- refetch the damn partitions
+Kocos.refetchPartitions()
+
 Kocos.printk(Kocos.L_INFO, "Booting...")
 
 Kocos.printk(Kocos.L_INFO, "Spawning init...")

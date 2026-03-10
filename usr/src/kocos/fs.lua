@@ -30,7 +30,9 @@ end
 ---@alias Kocos.dev table|{address: string, type: string, slot: integer}
 
 ---@class Kocos.blockdev
+---@field address string
 ---@field type "drive"
+---@field slot integer
 ---@field getCapacity fun(): integer
 ---@field getSectorSize fun(): integer
 ---@field getPlatterCount fun(): integer
@@ -40,20 +42,23 @@ end
 ---@field writeByte fun(index: integer, byte: integer)
 
 ---@class Kocos.partdev: Kocos.blockdev
+---@field address string
 ---@field type "partition"
+---@field slot integer
+---@field getPartitionName fun(): string
 ---@field getStorageDevice fun(): string
 ---@field isReadonly fun(): string
 ---@field getPartitionType fun(): string
 ---@field getSectorOffset fun(): integer
 
----@param blockdev Kocos.blockdev
+---@param dev Kocos.dev
 ---@param partitions string[]
-function Kocos.retainpartof(blockdev, partitions)
+function Kocos.retainpartof(dev, partitions)
 	local allparts = {}
 	for addr in component.list("partition", true) do
 		---@type Kocos.partdev
 		local part = component.proxy(addr)
-		if part.getStorageDevice() == blockdev.address then
+		if part.getStorageDevice() == dev.address then
 			table.insert(allparts, addr)
 		end
 	end
@@ -61,6 +66,131 @@ function Kocos.retainpartof(blockdev, partitions)
 		if not table.contains(partitions, addr) then
 			component.remove(addr)
 		end
+	end
+end
+
+---@param dev Kocos.dev
+---@return string[]?, string?
+function Kocos.getpartof(dev)
+	if dev.type == "partition" then return nil, Kocos.EBADDEV end
+	---@type string[]?, string?
+	local l, err
+	for _, mod in pairs(Kocos.mods) do
+		l, err = mod("FS-partition", dev)
+		if err then return nil, err end
+		if l then break end
+	end
+	if l then
+		-- automatically drop old partitions
+		Kocos.retainpartof(dev, l)
+		return l
+	end
+	return nil, Kocos.ENODRIVER
+end
+
+-- Makes a block partition
+-- If the component already exists, it'll do nothing
+---@param address string
+---@param drive Kocos.blockdev
+---@param name string
+---@param sectorOff integer Starts at 0
+---@param size integer In sectors
+---@param partType string
+---@param readOnly boolean
+---@return string?
+function Kocos.addDrivePartition(address, drive, name, sectorOff, size, partType, readOnly)
+	if component.type(address) then return address end
+	return component.add {
+		address = address,
+		type = "partition",
+		slot = drive.slot,
+		methods = {
+			getCapacity = {
+				direct = true,
+				doc = "function(): integer - Returns the partition size.",
+			},
+			getSectorSize = {
+				direct = true,
+				doc = "function(): integer - Returns the sector size of the partition.",
+			},
+			getPlatterCount = {
+				direct = true,
+				doc = "function(): integer - Returns the platter count of the device the partition lives on.",
+			},
+			readSector = {
+				direct = true,
+			},
+			writeSector = {
+				direct = true,
+			},
+			readByte = {
+				direct = true,
+			},
+			writeByte = {
+				direct = true,
+			},
+			getPartitionName = {
+				direct = true,
+			},
+			getStorageDevice = {
+				direct = true,
+			},
+			isReadonly = {
+				direct = true,
+			},
+			getPartitionType = {
+				direct = true,
+			},
+			getSectorOffset = {
+				direct = true,
+			},
+		},
+		invoke = function(method, ...)
+			if method == "getCapacity" then return size * drive.getSectorSize() end
+			if method == "getSectorSize" then return drive.getSectorSize() end
+			if method == "getPlatterCount" then return drive.getPlatterCount() end
+			if method == "readSector" then
+				local sec = ...
+				return drive.readSector(sec + sectorOff)
+			end
+			if method == "writeSector" then
+				if readOnly then return nil, "read-only partition" end
+				local sec, data = ...
+				return drive.writeSector(sec + sectorOff, data)
+			end
+			if method == "readByte" then
+				local idx = ...
+				return drive.readSector(idx + sectorOff * drive.getSectorSize())
+			end
+			if method == "writeByte" then
+				if readOnly then return nil, "read-only partition" end
+				local idx, data = ...
+				return drive.writeSector(idx + sectorOff * drive.getSectorSize(), data)
+			end
+			if method == "getPartitionName" then
+				return name
+			end
+			if method == "getStorageDevice" then
+				return drive.address
+			end
+			if method == "isReadonly" then
+				return readOnly
+			end
+			if method == "getPartitionType" then
+				return partType
+			end
+			if method == "getSectorOffset" then
+				return sectorOff
+			end
+			return nil, "no such method"
+		end,
+	}
+end
+
+function Kocos.refetchPartitions()
+	for dev in component.list() do
+		local p = component.proxy(dev)
+		if p and p.type ~= "partition" then Kocos.getpartof(p) end
 	end
 end
 
@@ -860,6 +990,7 @@ end
 ---@param dev? string
 ---@return integer?, string?
 function syscalls.sync(dev)
+	Kocos.refetchPartitions()
 	local synced = 0
 	for _, mnt in pairs(Kocos.mounts) do
 		if mnt.device == (dev or mnt.device) then
@@ -869,6 +1000,14 @@ function syscalls.sync(dev)
 		end
 	end
 	return synced
+end
+
+---@param dev? string
+---@return string[]?, string?
+function syscalls.partitionsof(dev)
+	local proxy = component.proxy(dev)
+	if not proxy then return nil, Kocos.ENODEV end
+	return Kocos.getpartof(proxy)
 end
 
 syscalls.canonical = Kocos.canonicalPath

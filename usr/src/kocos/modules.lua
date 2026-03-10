@@ -43,6 +43,9 @@ function Kocos.loadModuleCode(mod, code, chunkname)
 	if not ok then return false, handler end
 	if type(handler) ~= "function" then return false, Kocos.EHWPOISON end
 	Kocos.mods[mod] = handler
+	-- init after module is defined.
+	-- This allows a parititon table driver to re-load partitions for example
+	pcall(handler, "dkms_init")
 	return true
 end
 
