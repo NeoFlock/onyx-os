@@ -166,12 +166,21 @@ function ash.tokenat(data, off)
 		-- since its after the shellSymbols check,
 		-- $( is already handled.
 		local len = 1
-		while true do
-			local n = data:sub(off+len+1, off+len+1)
-			if n == "" then break end
-			if string.find(ash.bannedSubstituteLetters, n) then break end
-			if string.find(ash.whitespace, n) then break end
-			len = len + 1
+		if data:sub(off+2, off+2) == "{" then
+			while true do
+				local n = data:sub(off+len+1, off+len+1)
+				if n == "" then return nil, "unfinished ${", off end
+				len = len + 1
+				if n == "}" then break end
+			end
+		else
+			while true do
+				local n = data:sub(off+len+1, off+len+1)
+				if n == "" then break end
+				if string.find(ash.bannedSubstituteLetters, n) then break end
+				if string.find(ash.whitespace, n) then break end
+				len = len + 1
+			end
 		end
 
 		local s = data:sub(off+1, off+len)
@@ -280,7 +289,11 @@ function ash.parseTokens(tokens, dataLen)
 				part.value = t.data
 			elseif t.tt == "substitution" then
 				parser.nextToken()
-				part.substitution = t.data:sub(2)
+				if t.data:sub(2, 2) == "{" then
+					part.substitution = t.data:sub(3, -2)
+				else
+					part.substitution = t.data:sub(2)
+				end
 			elseif t.tt == "string" then
 				parser.nextToken()
 				part.value = t.data:sub(2, -2)

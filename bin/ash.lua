@@ -25,7 +25,7 @@ exec.lastExit = 0
 
 ---@alias ash.stdio {inp: integer, out: integer, err: integer, term: integer}
 
----@type table<string, fun(args: string[], std: ash.stdio): integer>
+---@type table<string, fun(args: string[], std: ash.stdio, env: table<string, string>): integer>
 local builtin = {}
 
 function builtin.exit(args)
@@ -61,6 +61,67 @@ function builtin.which(args, std)
 		end
 	end
 	return wrong
+end
+
+function builtin.export(args, std)
+	local malformed = 0
+	for _, var in ipairs(args) do
+		local eql = string.find(var, "=")
+		if eql then
+			local name = string.sub(var, 1, eql-1)
+			local val = string.sub(var, eql+1)
+			os.setenv(name, val)
+		else
+			malformed = malformed + 1
+			k.write(std.err, "malformed export assignment: " .. var .. "\n")
+		end
+	end
+	return malformed
+end
+
+builtin["local"] = function(args, std)
+	local curScope = exec.scope[#exec.scope]
+	local malformed = 0
+	for _, var in ipairs(args) do
+		local eql = string.find(var, "=")
+		if eql then
+			local name = string.sub(var, 1, eql-1)
+			local val = string.sub(var, eql+1)
+			curScope[name] = val
+		else
+			malformed = malformed + 1
+			k.write(std.err, "malformed local assignment: " .. var .. "\n")
+		end
+	end
+	return malformed
+end
+
+function builtin.eval(args, std)
+	local failed = 0
+	for _, arg in ipairs(args) do
+		local cmds, err = libash.parse(arg)
+		if cmds then
+			for _, cmd in ipairs(cmds) do
+				local e = exec.runCommand(cmd, std)
+				if e ~= 0 then
+					failed = failed + 1
+					k.write(std.err, "eval expression returned: " .. e .. "\n")
+				end
+			end
+		else
+			k.write(std.err, "eval error: " .. err .. "\n")
+		end
+	end
+	return failed
+end
+
+function builtin.exec(args, std)
+	local bin = table.remove(args, 1)
+	args[0] = bin
+	local _, err = k.exec(bin, args)
+	-- exec returned, thus error
+	k.write(std.err, "exec error: " .. err .. "\n")
+	return 1
 end
 
 local args = {...}
@@ -100,7 +161,7 @@ function exec.processArgument(arg, std)
 		local allVars = {""}
 
 		for _, sub in ipairs(arg.compound) do
-			local parts = exec.processArgument(sub)
+			local parts = exec.processArgument(sub, std)
 			allVars[#allVars] = allVars[#allVars] .. parts[1]
 			for i=2,#parts do table.insert(allVars, parts[i]) end
 		end
@@ -129,19 +190,31 @@ function exec.runCommand(command, std)
 		end
 
 		if i == 0 then return 0 end
-		return exec.runParts(argv[0], argv, nil, std)
+		return exec.runParts(argv, nil, std)
 	end
 	k.write(std.err, "ash: unsupported command type. THIS IS A BUG.\n")
 	return 1
 end
 
----@param cmd string
+---@param var string
+---@param val string
+function exec.setVar(var, val)
+	for i=#exec.scope, 1, -1 do
+		local locs = exec.scope[i]
+		if locs[var] or i == 1 then
+			locs[var] = val
+			return
+		end
+	end
+end
+
 ---@param argv string[]
 ---@param env? table<string, string>
 ---@param std ash.stdio
 ---@return integer
-function exec.runParts(cmd, argv, env, std)
+function exec.runParts(argv, env, std)
 	env = env or k.environ()
+	local cmd = argv[0]
 
 	if not cmd then
 		exec.lastExit = 0
@@ -149,8 +222,41 @@ function exec.runParts(cmd, argv, env, std)
 	end
 
 	if builtin[cmd] then
-		exec.lastExit = builtin[cmd](argv, std)
+		exec.lastExit = builtin[cmd](argv, std, env)
 		return exec.lastExit
+	end
+
+	if string.find(cmd, "=") then
+		local assigns = {}
+		local last = 0
+		for i=0,#argv do
+			local a = argv[i]
+			if not a then break end
+			local eql = string.find(a, "=")
+			if not eql then break end
+			local name = string.sub(a, 1, eql-1)
+			local val = string.sub(a, eql+1)
+			assigns[name] = val
+			last = i
+		end
+
+		if last == #argv then
+			-- just assignments
+			for var, val in pairs(assigns) do
+				exec.setVar(var, val)
+			end
+			return 0
+		else
+			local newEnv = table.copy(env)
+			for var, val in pairs(assigns) do
+				newEnv[var] = val
+			end
+			local nargs = {}
+			for i=last+1,#argv do
+				nargs[i - last - 1] = argv[i]
+			end
+			return exec.runParts(nargs, newEnv, std)
+		end
 	end
 
 	local bin = k.exists(cmd) and cmd or shutils.search(cmd)

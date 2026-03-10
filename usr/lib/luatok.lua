@@ -8,6 +8,7 @@
 ---@class luatok.token
 ---@field type luatok.tt
 ---@field len integer
+---@field data string
 
 local lib = {}
 
@@ -117,6 +118,7 @@ function lib.tokenAt(code, i)
 		return {
 			type = "whitespace",
 			len = len,
+			data = code:sub(i, i + len - 1),
 		}
 	end
 	if code:sub(i, i+1) == "--" then
@@ -131,6 +133,7 @@ function lib.tokenAt(code, i)
 		return {
 			type = "comment",
 			len = len,
+			data = code:sub(i, i + len - 1),
 		}
 	end
 	-- TODO: proper multi-line strings
@@ -146,6 +149,7 @@ function lib.tokenAt(code, i)
 		return {
 			type = "string",
 			len = len+2,
+			data = code:sub(i, i + len + 1),
 		}
 	end
 	if c == '"' or c == "'" then
@@ -160,6 +164,7 @@ function lib.tokenAt(code, i)
 		return {
 			type = "string",
 			len = len+1,
+			data = code:sub(i, i + len),
 		}
 	end
 	for _, op in ipairs(lib.ops) do
@@ -168,6 +173,7 @@ function lib.tokenAt(code, i)
 			return {
 				type = "symbol",
 				len = #op,
+				data = code:sub(i, i + #op - 1),
 			}
 		end
 	end
@@ -185,6 +191,7 @@ function lib.tokenAt(code, i)
 		return {
 			type = table.contains(lib.keywords, n) and "keyword" or "identifier",
 			len = len,
+			data = code:sub(i, i + len - 1),
 		}
 	end
 	if lib.isnum(c) then
@@ -225,6 +232,7 @@ function lib.tokenAt(code, i)
 		return {
 			type = "number",
 			len = len,
+			data = code:sub(i, i + len - 1),
 		}
 	end
 	return nil, "bad characater"

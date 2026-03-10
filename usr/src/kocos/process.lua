@@ -93,7 +93,7 @@ Kocos.kernelProcess = {
 Kocos.processes[0] = Kocos.kernelProcess
 Kocos.procStack[1] = Kocos.kernelProcess
 
-Kocos.defaultExecTime = Kocos.getCmdlineNum("EXEC_TIME", 0.5)
+Kocos.defaultExecTime = Kocos.getCmdlineNum("EXEC_TIME", 0.1)
 
 ---@type table<string, Kocos.daemon>
 Kocos.daemons = {}
