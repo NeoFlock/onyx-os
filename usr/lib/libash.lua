@@ -4,8 +4,8 @@ local ash = {}
 
 ash.whitespace = " \n\t\r\f\v"
 ash.arraySplit = " \n\t"
-ash.bannedSubstituteLetters = ".-()[]{}:=\"\'"
-ash.bannedWordLetters = "=$(;><&|\"\'" .. ash.whitespace
+ash.bannedSubstituteLetters = ".-()[]{}:=,&|;\"\'"
+ash.bannedWordLetters = "=$([{;><&|)]},\"\'" .. ash.whitespace
 
 ash.shellWords = {
 	"while",
@@ -143,12 +143,12 @@ function ash.tokenat(data, off)
 		end
 	end
 
-	if not string.find(ash.bannedWordLetters, c) then
+	if not string.find(ash.bannedWordLetters, c, nil, true) then
 		local len = 1
 		while true do
 			local n = data:sub(off+len+1, off+len+1)
 			if n == "" then break end
-			if string.find(ash.bannedWordLetters, n) then break end
+			if string.find(ash.bannedWordLetters, n, nil, true) then break end
 			len = len + 1
 		end
 
@@ -177,8 +177,8 @@ function ash.tokenat(data, off)
 			while true do
 				local n = data:sub(off+len+1, off+len+1)
 				if n == "" then break end
-				if string.find(ash.bannedSubstituteLetters, n) then break end
-				if string.find(ash.whitespace, n) then break end
+				if string.find(ash.bannedSubstituteLetters, n, nil, true) then break end
+				if string.find(ash.whitespace, n, nil, true) then break end
 				len = len + 1
 			end
 		end
@@ -250,9 +250,10 @@ function ash.parseTokens(tokens, dataLen)
 
 	local parser = {}
 
+	---@param n? integer
 	---@return ash.token?
-	function parser.peekToken()
-		return tokens[1]
+	function parser.peekToken(n)
+		return tokens[n or 1]
 	end
 
 	---@return ash.token?
@@ -261,8 +262,9 @@ function ash.parseTokens(tokens, dataLen)
 	end
 
 	---@param inSub boolean
+	---@param inFunc boolean
 	---@return ash.argument?, string?, integer?
-	function parser.nextArgument(inSub)
+	function parser.nextArgument(inSub, inFunc)
 		local first = parser.peekToken()
 		if not first then return nil, "argument expected", dataLen end
 
@@ -274,10 +276,10 @@ function ash.parseTokens(tokens, dataLen)
 			---@type ash.argument
 			local part = {}
 			if t.tt == "command-end" then
-				parser.nextToken()
 				break
 			elseif t.data == ")" and inSub then
-				parser.nextToken()
+				break
+			elseif t.data == "}" and inFunc then
 				break
 			elseif t.tt == "space" then
 				break
@@ -314,11 +316,66 @@ function ash.parseTokens(tokens, dataLen)
 		}
 	end
 
+	function parser.skipSpace()
+		while parser.peekToken() and parser.peekToken().tt == "space" do
+			parser.nextToken()
+		end
+	end
+
 	---@param inSub boolean
+	---@param inFunc boolean
 	---@return ash.command?, string?, integer?
-	function parser.nextCommand(inSub)
+	function parser.nextCommand(inSub, inFunc)
 		local first = parser.peekToken()
 		if not first then return nil, "command expected", dataLen end
+
+		local second = parser.peekToken(2)
+		if second and second.data == "(" then
+			---@type ash.command
+			local cmd = {
+				funcdef = {
+					name = first.data,
+					args = {},
+					body = {},
+				},
+			}
+			parser.nextToken()
+			parser.nextToken()
+			while true do
+				parser.skipSpace()
+				local arg = parser.nextToken()
+				if not arg then return nil, "argument expected", dataLen end
+				if arg.data == ")" and #cmd.funcdef.args == 0 then break end
+				if arg.tt ~= "text" then return nil, "text expected", arg.loc end
+				table.insert(cmd.funcdef.args, arg.data)
+				parser.skipSpace()
+				local n = parser.nextToken()
+				if not n then return nil, "unexpected EoF", dataLen end
+				if n.data == ")" then break end
+				if n.data ~= "," then
+					return nil, ", expected", n.loc
+				end
+			end
+			parser.skipSpace()
+			local start = parser.nextToken()
+			if not start then return nil, "{ expected", dataLen end
+			if start.data ~= "{" then return nil, "{ expected", start.loc end
+
+			while true do
+				parser.skipSpace()
+				local t = parser.peekToken()
+				if not t then return nil, "unexpected EoF", dataLen end
+				if t.data == "}" then
+					parser.nextToken()
+					break
+				else
+					local stmt, err, loc = parser.nextCommand(false, true)
+					if not stmt then return nil, err, loc end
+					table.insert(cmd.funcdef.body, stmt)
+				end
+			end
+			return cmd
+		end
 
 		if first.tt == "word" then
 			parser.nextToken()
@@ -330,26 +387,24 @@ function ash.parseTokens(tokens, dataLen)
 		local cmd = {simple = {}}
 
 		while true do
+			parser.skipSpace()
 			local t = parser.peekToken()
 			if not t then break end
-			if t.tt == "space" then
-				parser.nextToken()
-			else
-				if t.tt == "command-end" then parser.nextToken() break end
-				if t.data == ")" and inSub then parser.nextToken() break end
+			if t.tt == "command-end" then parser.nextToken() break end
+			if t.data == ")" and inSub then break end
+			if t.data == "}" and inFunc then break end
 
-				local arg, err, loc = parser.nextArgument(inSub)
-				if not arg then return nil, err, loc end
+			local arg, err, loc = parser.nextArgument(inSub, inFunc)
+			if not arg then return nil, err, loc end
 
-				table.insert(cmd.simple, arg)
-			end
+			table.insert(cmd.simple, arg)
 		end
 
 		return cmd
 	end
 
 	while #tokens > 0 do
-		local cmd, err, loc = parser.nextCommand(false)
+		local cmd, err, loc = parser.nextCommand(false, false)
 		if not cmd then return nil, err, loc end
 		table.insert(cmds, cmd)
 	end

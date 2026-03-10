@@ -23,6 +23,9 @@ exec.funcs = {}
 
 exec.lastExit = 0
 
+---@type table<string, string>
+exec.aliases = {}
+
 ---@alias ash.stdio {inp: integer, out: integer, err: integer, term: integer}
 
 ---@type table<string, fun(args: string[], std: ash.stdio, env: table<string, string>): integer>
@@ -47,6 +50,10 @@ function builtin.which(args, std)
 		local place
 		if builtin[arg] then
 			place = "builtin shell command"
+		elseif exec.funcs[arg] then
+			place = "function"
+		elseif exec.aliases[arg] then
+			place = "alias to " .. exec.aliases[arg]
 		elseif table.contains(libash.shellWords, arg) then
 			place = "reserved shell word"
 		else
@@ -61,6 +68,52 @@ function builtin.which(args, std)
 		end
 	end
 	return wrong
+end
+
+-- for performance
+function builtin.echo(args, std)
+	k.write(std.out, table.concat(args, " ") .. "\n")
+	return 0
+end
+
+function builtin.alias(args, std)
+	for _, arg in ipairs(args) do
+		local eql = string.find(arg, "=")
+		if eql then
+			local name = string.sub(arg, 1, eql-1)
+			local val = string.sub(arg, eql+1)
+			exec.aliases[name] = val
+		else
+			local to = exec.aliases[arg]
+			if to then
+				k.write(std.out, string.format("alias %s=`%s`\n", arg, to))
+			else
+				k.write(std.out, string.format("unknown alias %s\n", arg))
+			end
+		end
+	end
+	return 0
+end
+
+function builtin.unalias(args)
+	for _, arg in ipairs(args) do
+		exec.aliases[arg] = nil
+	end
+	return 0
+end
+
+function builtin.command(args, std, env)
+	local cmd = table.remove(args, 1)
+	if not cmd then return 0 end
+
+	local found = shutils.search(cmd)
+	if found then
+		args[0] = found
+		return exec.runParts(args, env, std)
+	else
+		k.write(std.err, "command not found: " .. cmd .. "\n")
+		return 1
+	end
 end
 
 function builtin.export(args, std)
@@ -102,11 +155,7 @@ function builtin.eval(args, std)
 		local cmds, err = libash.parse(arg)
 		if cmds then
 			for _, cmd in ipairs(cmds) do
-				local e = exec.runCommand(cmd, std)
-				if e ~= 0 then
-					failed = failed + 1
-					k.write(std.err, "eval expression returned: " .. e .. "\n")
-				end
+				failed = failed + exec.runCommand(cmd, std)
 			end
 		else
 			k.write(std.err, "eval error: " .. err .. "\n")
@@ -192,6 +241,13 @@ function exec.runCommand(command, std)
 		if i == 0 then return 0 end
 		return exec.runParts(argv, nil, std)
 	end
+	if command.funcdef then
+		exec.funcs[command.funcdef.name] = {
+			args = command.funcdef.args,
+			body = command.funcdef.body,
+		}
+		return 0
+	end
 	k.write(std.err, "ash: unsupported command type. THIS IS A BUG.\n")
 	return 1
 end
@@ -216,6 +272,16 @@ function exec.runParts(argv, env, std)
 	env = env or k.environ()
 	local cmd = argv[0]
 
+	-- aliases cannot be recursive
+	if exec.aliases[cmd] then
+		local parts = string.split(exec.aliases[cmd], " ")
+		for _, arg in ipairs(argv) do
+			table.insert(parts, arg)
+		end
+		cmd = table.remove(parts, 1)
+		argv = parts
+	end
+
 	if not cmd then
 		exec.lastExit = 0
 		return 0
@@ -223,6 +289,22 @@ function exec.runParts(argv, env, std)
 
 	if builtin[cmd] then
 		exec.lastExit = builtin[cmd](argv, std, env)
+		return exec.lastExit
+	end
+
+	if exec.funcs[cmd] then
+		local f = exec.funcs[cmd]
+		exec.lastExit = 0
+		---@type table<string, string>
+		local scope = {}
+		for i=1,#f.args do
+			scope[f.args[i]] = argv[i] or ""
+		end
+		table.insert(exec.scope, scope)
+		for _, stmt in ipairs(f.body) do
+			exec.lastExit = exec.runCommand(stmt, std)
+		end
+		table.remove(exec.scope, #exec.scope)
 		return exec.lastExit
 	end
 
