@@ -55,10 +55,10 @@ return function(req, ...)
 	if req == "NET-socket" then
 		local domain, type, proto = ...
 		if domain ~= "AF_INET" then return end
-		if not component.internet then return nil, Kocos.ENETDOWN end
 		if type ~= "SOCK_STREAM" then return end
 		proto = proto or "http"
-		if proto ~= "http" or proto ~= "tcp" then return end
+		if proto ~= "http" and proto ~= "tcp" then return end
+		if not component.internet then return nil, Kocos.ENETDOWN end
 		if proto == "http" and not component.internet.isHttpEnabled() then
 			return nil, Kocos.EPERM
 		end

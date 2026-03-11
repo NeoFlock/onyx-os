@@ -22,7 +22,7 @@ function syscalls.socket(domain, type, protocol)
 		end
 	end
 
-	if not socket then return nil, Kocos.ENOTBOUND end
+	if not socket then return nil, Kocos.ENODRIVER end
 
 	local proc = Kocos.currentProcess()
 	local avail = Kocos.availableDescriptorFor(proc)
