@@ -4,7 +4,7 @@ local url, file = ...
 
 assert(url, "no url")
 
-local s = assert(k.socket("AF_INET", "", "http"))
+local s = assert(k.socket("AF_INET", "SOCK_STREAM", "http"))
 assert(k.bind(s, {address = url}))
 assert(k.connect(s))
 if file then

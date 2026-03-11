@@ -6,7 +6,7 @@
 ---@field opts? table
 
 ---@param domain string
----@param type string
+---@param type "SOCK_DGRAM"|"SOCK_STREAM"|"SOCK_SEQPACKET"|"SOCK_RAW"|string
 ---@param protocol? string nil for default one
 ---@return integer?, string
 function syscalls.socket(domain, type, protocol)
@@ -69,36 +69,45 @@ function syscalls.listen(fd, backlog)
 end
 
 ---@param fd integer
----@param data string
 ---@return integer?, string?
---- Returns the current write ID that will be passed
---- to the data_written signal once completed.
---- Intended mostly for sockets but files can also use it.
---- They always start at 0 and increment by 1 for every successful aio_write.
-function syscalls.aio_write(fd, data)
-	if type(fd) ~= "number" then return nil, Kocos.EINVAL end
-	if type(data) ~= "string" then return nil, Kocos.EINVAL end
+function syscalls.accept(fd)
+	local h = Kocos.currentProcess().fds[fd]
+	if not h then return nil, Kocos.EBADF end
+	if h.type ~= "socket" then return nil, Kocos.EBADF end
+	return Kocos.handleDescriptorRequest(h, "accept")
+end
+
+---@param fd integer
+---@param data string
+---@param id any
+---@return boolean, string?
+--- Attempts an async write.
+--- If successful, it will eventually send a data_written event to the socket.
+--- The event has 2 parameters, the id initially sent, and an error if it failed.
+function syscalls.aio_write(fd, data, id)
+	if type(fd) ~= "number" then return false, Kocos.EINVAL end
+	if type(data) ~= "string" then return false, Kocos.EINVAL end
 
 	local proc = Kocos.currentProcess()
 	local f = proc.fds[fd]
-	if not f then return nil, Kocos.EBADF end
-	return Kocos.handleDescriptorRequest(f, "aio_write", data)
+	if not f then return false, Kocos.EBADF end
+	return Kocos.handleDescriptorRequest(f, "aio_write", data, id)
 end
 
 ---@param fd integer
 ---@param len integer
----@return integer?, string?
---- Returns the current read ID that will be passed
---- to the data_recv signal once completed.
---- Intended mostly for sockets but files can also use it.
---- Sockets will typically queue the signal regardless of aio_read.
---- This function is mostly just for files, but not all filesystems support it.
---- They always start at 0 and increment by 1 for every successful aio_read.
+---@return boolean, string?
+--- Requests an async read.
+--- This would eventually send a data_recv signal when data is received.
+--- The signal has 2 parameters, a length that can be passed to read() to
+--- get the data, or nil, and an error if applicable.
+--- Sockets will send the signal regardless, and thus for sockets,
+--- this is completely useless.
 function syscalls.aio_read(fd, len)
-	if type(fd) ~= "number" then return nil, Kocos.EINVAL end
-	if type(len) ~= "number" then return nil, Kocos.EINVAL end
+	if type(fd) ~= "number" then return false, Kocos.EINVAL end
+	if type(len) ~= "number" then return false, Kocos.EINVAL end
 	local proc = Kocos.currentProcess()
 	local f = proc.fds[fd]
-	if not f then return nil, Kocos.EBADF end
+	if not f then return false, Kocos.EBADF end
 	return Kocos.handleDescriptorRequest(f, "aio_read", len)
 end

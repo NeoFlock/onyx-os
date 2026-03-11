@@ -145,6 +145,7 @@ local buildInfo = {
 			"usr/src/kocos/modules.lua",
 			"usr/src/kocos/process.lua",
 			"usr/src/kocos/fs.lua",
+			"usr/src/kocos/net.lua",
 			"usr/src/kocos/boot.lua",
 		},
 		out = "boot/vmkocos",
