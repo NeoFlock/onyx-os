@@ -71,9 +71,10 @@ end
 ---@param fd integer
 ---@param data string
 ---@return integer?, string?
---- Returns the current write offset that will be passed
+--- Returns the current write ID that will be passed
 --- to the data_written signal once completed.
 --- Intended mostly for sockets but files can also use it.
+--- They always start at 0 and increment by 1 for every successful aio_write.
 function syscalls.aio_write(fd, data)
 	if type(fd) ~= "number" then return nil, Kocos.EINVAL end
 	if type(data) ~= "string" then return nil, Kocos.EINVAL end
@@ -87,11 +88,12 @@ end
 ---@param fd integer
 ---@param len integer
 ---@return integer?, string?
---- Returns the current read offset that will be passed
+--- Returns the current read ID that will be passed
 --- to the data_recv signal once completed.
 --- Intended mostly for sockets but files can also use it.
 --- Sockets will typically queue the signal regardless of aio_read.
 --- This function is mostly just for files, but not all filesystems support it.
+--- They always start at 0 and increment by 1 for every successful aio_read.
 function syscalls.aio_read(fd, len)
 	if type(fd) ~= "number" then return nil, Kocos.EINVAL end
 	if type(len) ~= "number" then return nil, Kocos.EINVAL end
