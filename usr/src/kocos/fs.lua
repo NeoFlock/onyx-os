@@ -980,6 +980,7 @@ function syscalls.touch(path, perms, ftype, uid, gid)
 	if type(uid) ~= "number" then return false, Kocos.EINVAL end
 	if type(gid) ~= "number" then return false, Kocos.EINVAL end
 	if not Kocos.validFileType(ftype) then return false, Kocos.EINVAL end
+	if ftype == "symlink" then return false, Kocos.EPERM end
 	perms = math.floor(perms)
 	uid = math.floor(uid)
 	gid = math.floor(gid)

@@ -13,6 +13,12 @@ function Kocos.notifyListeners(...)
 			Kocos.printkf(Kocos.L_ERROR, "Event handler error: %s", err)
 		end
 	end
+	for _, mod in pairs(Kocos.mods) do
+		local ok, err = xpcall(mod, debug.traceback, "EVENT", ...)
+		if not ok then
+			Kocos.printkf(Kocos.L_ERROR, "Module event handler error: %s", err)
+		end
+	end
 end
 
 function Kocos.listen(func)

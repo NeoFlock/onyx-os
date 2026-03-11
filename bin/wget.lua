@@ -5,10 +5,11 @@ local url, file = ...
 assert(url, "no url")
 
 local s = assert(k.socket("AF_INET", "", "http"))
-assert(k.connect(s, {address = url, port = 0}))
+assert(k.bind(s, {address = url}))
+assert(k.connect(s))
 if file then
 	if not k.exists(file) then
-		assert(k.touch(file, 2^16-1))
+		assert(k.touch(file, 2^9-1))
 	end
 	local f = assert(k.open(file, "w"))
 	local lastRead = k.uptime()

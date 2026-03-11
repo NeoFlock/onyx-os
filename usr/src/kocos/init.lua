@@ -276,7 +276,7 @@ end
 Kocos.O_NONBLOCK = 1
 Kocos.O_CLOEXEC = 2
 
----@alias Kocos.descriptorReq "close"|"read"|"write"|"seek"|"accept"|"connect"|"listen"|"ioctl"
+---@alias Kocos.descriptorReq "close"|"read"|"write"|"seek"|"accept"|"connect"|"listen"|"addrinfo_valid"|"ioctl"|"aio_read"|"aio_write"
 
 ---@alias Kocos.descriptorEv "data_recv"|"data_written"|"connected"|"closed"|"accepting"
 
@@ -296,6 +296,7 @@ Kocos.O_CLOEXEC = 2
 ---@field handler Kocos.descriptorHandler
 ---@field evbuf? table[]
 ---@field listener? Kocos.fileListener
+---@field addrinfo? Kocos.addrinfo
 
 Kocos.MAX_HEVBUF = Kocos.getCmdlineNum("MAX_HEVBUF", 8)
 

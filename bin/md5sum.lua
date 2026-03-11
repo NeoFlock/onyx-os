@@ -1,3 +1,3 @@
 --!lua
 
-print("fuck off")
+print("not implemented")
