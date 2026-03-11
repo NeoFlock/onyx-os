@@ -178,7 +178,8 @@ function tar.encodeRecordInto(record, t)
 	table.insert(header, string.rightpad(tar.linkpath or "", 100, "\0"))
 
 	-- end of normal tar header, beginning of ustar header
-	table.insert(header, "ustar  \0") -- GNU tar did it so...
+	table.insert(header, "ustar\0") -- ustar header
+	table.insert(header, "00") -- ustar version
 	table.insert(header, string.rightpad(record.owningUserName, 32, "\0"))
 	table.insert(header, string.rightpad(record.owningGroupName, 32, "\0"))
 	-- no one actually cares about these anymore
