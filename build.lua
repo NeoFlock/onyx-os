@@ -16,6 +16,8 @@ if not os.exec then
 	require("usr.src.kocos.utils")
 end
 
+local tar = require("tar")
+
 local function perms3(str)
 	local n = 0
 	if str:sub(1,1) == "r" then n = n + 4 end
@@ -77,11 +79,25 @@ local function recursiveFiles()
 		".gitkeep",
 		".",
 		"..",
+		".kocos",
+		".gitignore",
+		"build.lua",
+		"README.md",
+		"TODO.md",
+		-- prevent recursion
+		"ramfs.tar",
+		"installer.lua",
 	}
 
 	local files = {}
 
 	local function scanDir(path)
+		if path:sub(-1, -1) == "/" then path = path:sub(1, -2) end
+		if path == "dev" then return {} end
+		if path == "proc" then return {} end
+		if path == "sys" then return {} end
+		if path == "tmp" then return {} end
+		if path == "usr/src" then return {} end
 		local entries = assert(list(path))
 		for _, entry in ipairs(entries) do
 			if not table.contains(forbidden, entry) then
@@ -121,12 +137,14 @@ end
 
 local built = {}
 
+local kernel = os.getenv("ONYX_KERNEL") or "kocos"
+
 local buildInfo = {
 	onyx = {
 		type = "none",
 		deps = {
 			"kocos_metadata",
-			os.getenv("ONYX_KERNEL") or "kocos", -- need the kernel, obviously
+			kernel, -- need the kernel, obviously
 		},
 	},
 	kocos_metadata = {
@@ -151,7 +169,49 @@ local buildInfo = {
 		out = "boot/vmkocos",
 		deps = {},
 	},
+	installer = {
+		type = "ramfs-inst",
+		deps = {kernel},
+	},
 }
+
+---@return string, string
+local function makeRamFS()
+	local kernelCode = ""
+	local everything = recursiveFiles()
+	---@type tar.record[]
+	local records = {}
+	for _, path in ipairs(everything) do
+		print("writing " .. path .. " to ramfs...")
+		local p = perms(permsOf(path))
+		local ty = ftype(path)
+		local data = ""
+		local linked = ""
+		if ty == "regular" then
+			local f = assert(io.open(path, "rb"))
+			data = tostring(f:read("a"))
+			f:close()
+		elseif ty == "symlink" then
+
+		end
+		if path == "boot/vmkocos" then kernelCode = data end
+		---@type tar.record
+		local record = {
+			name = path,
+			type = tar.typeConversion[ty],
+			uid = 0,
+			gid = 0,
+			owningUserName = "root",
+			owningGroupName = "root",
+			data = data,
+			filenamePrefix = "",
+			mode = p,
+			mtime = 0,
+		}
+		table.insert(records, record)
+	end
+	return tar.encode(records), kernelCode
+end
 
 ---@param src string
 ---@return string
@@ -213,6 +273,23 @@ local function runBuild(thing)
 
 		local f = assert(io.open(".kocos", "wb"))
 		f:write(table.concat(lines, "\n"))
+		f:flush()
+		f:close()
+	elseif entry.type == "ramfs-inst" then
+
+		local ramimg, kernelCode = makeRamFS()
+
+		local f = assert(io.open("ramfs.tar", "wb"))
+		f:write(ramimg)
+		f:flush()
+		f:close()
+
+		local koff = assert(string.find(ramimg, kernelCode, nil, true), "missing kernel")
+
+		local inst = string.format("local ramfs=%q local kernel=string.sub(ramfs, %d, %d) return assert(load(kernel,'=kocos'))('kocos','',ramfs)", ramimg, koff, koff+#kernelCode-1)
+
+		f = assert(io.open("installer.lua", "wb"))
+		f:write(inst)
 		f:flush()
 		f:close()
 	end

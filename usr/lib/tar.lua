@@ -40,10 +40,26 @@ tar.typeTable = {
 	x = "x",
 }
 
+---@type table<Kocos.filetype, tar.type>
+tar.typeConversion = {
+	regular = "regular",
+	directory = "directory",
+	symlink = "symlink",
+	device = "chardev",
+	fifo = "fifo",
+	socket = "fifo",
+}
+
 ---@type table<string, tar.type>
 tar.invTypeTable = {}
 for t, c in pairs(tar.typeTable) do
 	tar.invTypeTable[c] = t
+end
+
+---@type table<tar.type, Kocos.filetype>
+tar.invTypeConversion = {}
+for t, c in pairs(tar.typeConversion) do
+	tar.invTypeConversion[c] = t
 end
 
 ---@param s string
