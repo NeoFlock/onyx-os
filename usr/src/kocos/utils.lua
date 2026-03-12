@@ -337,13 +337,29 @@ function string.boottimefmt(t)
 end
 
 ---@param bytes string
-function string.tonumBE(bytes)
+---@param i? integer
+---@param len? integer
+---@return integer
+function string.tonumBE(bytes, i, len)
 	local n = 0
-	for i=1,#bytes do
+	i=i or 1
+	len = len or #bytes
+	for k=i,i+len-1 do
 		n = n * 256
-		n = n + bytes:byte(i, i)
+		n = n + bytes:byte(k,k)
 	end
 	return n
+end
+
+---@param n integer
+---@param len integer
+function string.fromnumBE(n, len)
+	local b = ""
+	while n > 0 do
+		b = b .. string.char(n % 256)
+		n = math.floor(n / 256)
+	end
+	return string.rightpad(b, len, '\0'):reverse()
 end
 
 ---@param name string

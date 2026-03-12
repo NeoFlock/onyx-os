@@ -16,7 +16,7 @@ if not os.exec then
 	require("usr.src.kocos.utils")
 end
 
-local tar = require("tar")
+local kar = require("kar")
 
 local function perms3(str)
 	local n = 0
@@ -28,6 +28,13 @@ end
 
 local function perms(str)
 	return perms3(str) * 64 + perms3(str:sub(4)) * 8 + perms3(str:sub(7))
+end
+
+local readWholeFile = readfile or function(path)
+	local f = assert(io.open(path, "rb"))
+	local data = tostring(f:read("a"))
+	f:close()
+	return data
 end
 
 ---@param path string
@@ -72,32 +79,33 @@ local ftype = io.ftype or function(path)
 	return lfs.attributes(path, 'mode') == 'directory' and 'directory' or 'regular'
 end
 
-local function recursiveFiles()
-	local forbidden = {
-		".kocos",
-		".git",
-		".gitkeep",
-		".",
-		"..",
-		".kocos",
-		".gitignore",
-		"build.lua",
-		"README.md",
-		"TODO.md",
-		-- prevent recursion
-		"ramfs.tar",
-		"installer.lua",
-	}
+local forbidden = {
+	".kocos",
+	".git",
+	".gitkeep",
+	".",
+	"..",
+	".kocos",
+	".gitignore",
+	"build.lua",
+	"README.md",
+	"TODO.md",
+	"docs",
+	-- prevent recursion
+	"ramfs.tar",
+	"ramfs.kar",
+	"installer.lua",
+}
 
+local badpaths = {"dev", "proc", "sys", "tmp", "usr/src"}
+
+---@return string[]
+local function recursiveFiles()
 	local files = {}
 
 	local function scanDir(path)
 		if path:sub(-1, -1) == "/" then path = path:sub(1, -2) end
-		if path == "dev" then return {} end
-		if path == "proc" then return {} end
-		if path == "sys" then return {} end
-		if path == "tmp" then return {} end
-		if path == "usr/src" then return {} end
+		if table.contains(badpaths, path) then return {} end
 		local entries = assert(list(path))
 		for _, entry in ipairs(entries) do
 			if not table.contains(forbidden, entry) then
@@ -120,6 +128,47 @@ local function recursiveFiles()
 		end
 	end
 	return files
+end
+
+local function karRecs()
+	---@type kar.record[]
+	local recs = {}
+
+	---@param path string
+	---@param name string
+	local function makeRecord(path, name)
+		---@type kar.record
+		local rec = {
+			name = name,
+			type = assert(ftype(path)),
+			perms = perms(permsOf(path)),
+			uid = 0,
+			gid = 0,
+			mtime = 0,
+		}
+		if rec.type == "regular" then
+			rec.data = readWholeFile(path)
+		elseif rec.type == "directory" then
+			if path:sub(-1, -1) == "/" then path = path:sub(1, -2) end
+			rec.entries = {}
+			if not table.contains(badpaths, path) then
+				for _, ent in ipairs(assert(list(path))) do
+					if not table.contains(forbidden, ent) then
+						table.insert(rec.entries, makeRecord(path .. "/" .. ent, ent))
+					end
+				end
+			end
+		end
+		return rec
+	end
+
+	local root = assert(list("."))
+	for _, entry in ipairs(root) do
+		if not table.contains(forbidden, entry) then
+			table.insert(recs, makeRecord(entry, entry))
+		end
+	end
+	return recs
 end
 
 local toBuild = {
@@ -162,6 +211,7 @@ local buildInfo = {
 			"usr/src/kocos/errno.lua",
 			"usr/src/kocos/modules.lua",
 			"usr/src/kocos/process.lua",
+			"usr/src/kocos/ramfs.lua",
 			"usr/src/kocos/fs.lua",
 			"usr/src/kocos/net.lua",
 			"usr/src/kocos/boot.lua",
@@ -171,46 +221,15 @@ local buildInfo = {
 	},
 	installer = {
 		type = "ramfs-inst",
-		deps = {kernel},
+		deps = {"onyx"},
 	},
 }
 
 ---@return string, string
 local function makeRamFS()
-	local kernelCode = ""
-	local everything = recursiveFiles()
-	---@type tar.record[]
-	local records = {}
-	for _, path in ipairs(everything) do
-		print("writing " .. path .. " to ramfs...")
-		local p = perms(permsOf(path))
-		local ty = ftype(path)
-		local data = ""
-		local linked = ""
-		if ty == "regular" then
-			local f = assert(io.open(path, "rb"))
-			data = tostring(f:read("a"))
-			f:close()
-		elseif ty == "symlink" then
-
-		end
-		if path == "boot/vmkocos" then kernelCode = data end
-		---@type tar.record
-		local record = {
-			name = path,
-			type = tar.typeConversion[ty],
-			uid = 0,
-			gid = 0,
-			owningUserName = "root",
-			owningGroupName = "root",
-			data = data,
-			filenamePrefix = "",
-			mode = p,
-			mtime = 0,
-		}
-		table.insert(records, record)
-	end
-	return tar.encode(records), kernelCode
+	local kernelCode = assert(readWholeFile("boot/vmkocos"))
+	local records = karRecs()
+	return kar.encode(records), kernelCode
 end
 
 ---@param src string
@@ -239,8 +258,7 @@ local function runBuild(thing)
 		for _, file in ipairs(entry.files) do
 			if file ~= "" then
 				print("Reading", file)
-				local f = assert(io.open(file, "rb"))
-				local fcode = assert(f:read("a"), "no code")
+				local fcode = readWholeFile(file)
 				if entry.luamin then
 					fcode = luamin(fcode)
 				end
@@ -249,7 +267,6 @@ local function runBuild(thing)
 				end
 				if fcode:sub(-1, -1) ~= " " then fcode = fcode .. " " end
 				outcode = outcode .. fcode
-				f:close()
 			end
 		end
 		local f = assert(io.open(entry.out, "wb"))
@@ -279,7 +296,7 @@ local function runBuild(thing)
 
 		local ramimg, kernelCode = makeRamFS()
 
-		local f = assert(io.open("ramfs.tar", "wb"))
+		local f = assert(io.open("ramfs.kar", "wb"))
 		f:write(ramimg)
 		f:flush()
 		f:close()

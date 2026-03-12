@@ -47,7 +47,6 @@ tar.typeConversion = {
 	symlink = "symlink",
 	device = "chardev",
 	fifo = "fifo",
-	socket = "fifo",
 }
 
 ---@type table<string, tar.type>

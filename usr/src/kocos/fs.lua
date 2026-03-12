@@ -255,11 +255,11 @@ function Kocos.realPathFor(proc, path)
 	return Kocos.joinPath(proc.root, proc.cwd, path)
 end
 
----@alias Kocos.filetype "regular"|"directory"|"symlink"|"socket"|"fifo"|"device"
+---@alias Kocos.filetype "regular"|"directory"|"symlink"|"fifo"|"device"
 
 ---@param ftype Kocos.filetype
 function Kocos.validFileType(ftype)
-	return ftype == "regular" or ftype == "directory" or ftype == "symlink" or ftype == "socket" or ftype == "fifo"
+	return ftype == "regular" or ftype == "directory" or ftype == "symlink" or ftype == "fifo"
 end
 
 ---@class Kocos.fstat
@@ -629,7 +629,7 @@ function Kocos._defaultManagedFS(req, ...)
 			diskSize = 0,
 			uid = 0,
 			gid = 0,
-			inode = 0,
+			inode = -1,
 			lastModified = state.dev.lastModified(path),
 			perms = 0,
 		}
@@ -674,13 +674,13 @@ do
 	Kocos.printk(Kocos.L_INFO, "mounting /")
 	local dev = Kocos.getCmdlineStr("ROOT", computer.getBootAddress())
 
-	if component.type(dev) == "filesystem" then
+	if Kocos.ramfs then
+		Kocos.mounts[""] = assert(Kocos.ramfsFor(Kocos.ramfs))
+		Kocos.printk(Kocos.L_INFO, "mounted / as ramfs")
+	elseif component.type(dev) == "filesystem" then
 		-- ultra free
 		Kocos.mounts[""] = assert(Kocos.mountFor(component.proxy(dev)))
 		Kocos.printk(Kocos.L_INFO, "mounted / as managedfs")
-	elseif Kocos.ramfs then
-		-- TODO: make a ramfs image
-		Kocos.printk(Kocos.L_INFO, "mounted / as ramfs")
 	else
 		Kocos.panick("Unsupported root. Please provide a ramfs instead")
 	end
@@ -828,8 +828,6 @@ function syscalls.open(path, mode)
 
 		proc.fds[availableFd] = mode == "r" and state.reader or state.writer
 		return availableFd
-	elseif stat.type == "socket" then
-		return nil, Kocos.ENODRIVER
 	end
 	return nil, Kocos.EHWPOISON
 end

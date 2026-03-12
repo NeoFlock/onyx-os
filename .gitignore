@@ -1,4 +1,5 @@
 /run_ocelot.sh
 /installer.lua
-/ramfs.tar
+*.tar
+*.kar
 # we show the kernel and the OPKREPO file so the git repo is a valid ONYX repo
