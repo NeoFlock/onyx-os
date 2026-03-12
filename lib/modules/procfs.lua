@@ -74,7 +74,6 @@ return function(req, ...)
 	if req == "FS-stat" then
 		---@type _, string
 		local _, path = ...
-		Kocos.printkf(Kocos.L_DEBUG, "stat: %s", path)
 		if path == "" then
 			---@type Kocos.fstat
 			return {

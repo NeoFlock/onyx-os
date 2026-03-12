@@ -139,6 +139,5 @@ usr/lib/tar.lua regular 0 0 493
 usr/lib/shutils.lua regular 0 0 493
 usr/lib/userdb.lua regular 0 0 493
 usr/src directory 0 0 438
-run_ocelot.sh regular 0 0 438
 boot directory 0 0 493
 boot/vmkocos regular 0 0 493

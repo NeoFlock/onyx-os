@@ -65,7 +65,14 @@ local function permsOf(path)
 	return "rw-rw-rw-"
 end
 
-local list = io.list or function(path)
+local function list(path)
+	if io.list then
+		local l = assert(io.list(path))
+		for i=1,#l do
+			l[i] = l[i]:gsub("/", "")
+		end
+		return l
+	end
 	local lfs = require("lfs")
 	local t = {}
 	for e in lfs.dir(path) do
@@ -87,6 +94,7 @@ local forbidden = {
 	"..",
 	".kocos",
 	".gitignore",
+	"run_ocelot.sh",
 	"build.lua",
 	"README.md",
 	"TODO.md",
