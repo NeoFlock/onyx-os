@@ -48,20 +48,28 @@ function builtin.which(args, std)
 	for _, arg in ipairs(args) do
 		---@type string?
 		local place
+		local named
 		if builtin[arg] then
 			place = "builtin shell command"
+			named = true
 		elseif exec.funcs[arg] then
 			place = "function"
+			named = true
 		elseif exec.aliases[arg] then
 			place = "alias to " .. exec.aliases[arg]
+			named = true
 		elseif table.contains(libash.shellWords, arg) then
 			place = "reserved shell word"
+			named = true
 		else
 			place = shutils.search(arg)
 		end
 
 		if place then
-			k.write(std.out, arg .. ": " .. place .. "\n")
+			if named then
+				k.write(std.out, arg .. ":")
+			end
+			k.write(std.out, place .. "\n")
 		else
 			k.write(std.err, "could not find " .. arg .. "\n")
 			wrong = wrong + 1

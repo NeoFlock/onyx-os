@@ -173,4 +173,37 @@ kar.testDirectory = {
 	},
 }
 
+---@return kar.record?
+function kar.toRecord(path)
+	local stat = k.stat(path)
+	if not stat then return end
+	local _, name = k.parentPath(path)
+	if not name then return end
+
+	local ty = assert(k.ftype(path))
+
+	---@type kar.record
+	local rec = {
+		name = name,
+		type = ty,
+		uid = stat.uid,
+		gid = stat.gid,
+		mtime = stat.lastModified,
+		perms = stat.perms,
+	}
+
+	if ty == "regular" then
+		rec.data = assert(readfile(path))
+	elseif ty == "directory" then
+		local l = assert(k.list(path))
+		rec.entries = {}
+		for _, ent in ipairs(l) do
+			local entrec = kar.toRecord(k.join(path, ent))
+			if not entrec then return end
+			table.insert(rec.entries, entrec)
+		end
+	end
+	return rec
+end
+
 return kar

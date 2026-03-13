@@ -271,6 +271,11 @@ function syscalls.hostname(hostname)
 	return Kocos.hostname
 end
 
+---@return table<string, string>
+function syscalls.kcmdline()
+	return table.copy(Kocos.cmdline)
+end
+
 -- file descriptor system
 
 Kocos.O_NONBLOCK = 1

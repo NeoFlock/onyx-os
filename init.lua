@@ -1,3 +1,4 @@
+-- For managed filesystems
 local fs = computer.getBootAddress()
 
 if component.invoke(fs, "exists", "installer.lua") then
@@ -15,37 +16,24 @@ if component.invoke(fs, "exists", "installer.lua") then
 	error("installer halted")
 end
 
-local kernelCode = ""
-local kernelF = assert(component.invoke(fs, "open", "boot/vmkocos"))
-local segment = 0
+local orbitCode = ""
+local orbitF = assert(component.invoke(fs, "open", "boot/init.lua"))
 
 while true do
-	local code, err = component.invoke(fs, "read", kernelF, math.huge)
+	local code, err = component.invoke(fs, "read", orbitF, math.huge)
 	if err then
 		error(err)
 	end
 	if not code then break end
-	kernelCode = kernelCode .. code
-	while true do
-		local segTerm, segTermEnd = string.find(kernelCode, "--[[KOCOS_SEGMENT]]", nil, true)
-		if segTerm then
-			segment = segment + 1
-			local rawCode = string.sub(kernelCode, 1, segTerm-1)
-			local f = assert(load(rawCode, "=kocos_seg" .. segment))
-			f()
-			kernelCode = string.sub(kernelCode, segTermEnd+1)
-		else
-			break
-		end
-	end
+	orbitCode = orbitCode .. code
 end
 
-component.invoke(fs, "close", kernelF)
+component.invoke(fs, "close", orbitF)
 
-if #kernelCode > 0 then
-	local f = assert(load(kernelCode, "=kocos"))
-	kernelCode = "" -- allow it to be GC'd
-	f()
+if #orbitCode > 0 then
+	local f = assert(load(orbitCode, "=bootloader"))
+	orbitCode = "" -- allow it to be GC'd
+	f("boot")
 end
 
-error("kernel halted")
+error("orbit halted")

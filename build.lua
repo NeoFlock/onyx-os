@@ -61,6 +61,8 @@ local function permsOf(path)
 	if string.startswith(path, "usr/lib/") then return "rwxr-xr-x" end
 	if path == "boot" then return "rwxr-xr-x" end
 	if path == "init.lua" then return "rwxr-xr-x" end
+	if path == "boot/orbit.conf" then return "rw-r--r--" end
+	if string.startswith(path, "boot/ramimg-") then return "rw-------" end
 	if string.startswith(path, "boot/") then return "rwxr-xr-x" end
 	return "rw-rw-rw-"
 end

@@ -1178,9 +1178,12 @@ function syscalls.mount(path, device, cmdline)
 	if not proxy then
 		return false, Kocos.ENODEV
 	end
-	local list, err = syscalls.list(path)
-	if not list then return false, err end
-	if #list > 0 then return false, Kocos.ENOTEMPTY end
+
+	if Kocos.mounts[""] then
+		local list, err = syscalls.list(path)
+		if not list then return false, err end
+		if #list > 0 then return false, Kocos.ENOTEMPTY end
+	end
 
 	local proc = Kocos.currentProcess()
 	local mntpath = Kocos.realPathFor(proc, path):sub(2)
@@ -1195,6 +1198,8 @@ function syscalls.mount(path, device, cmdline)
 	return true
 end
 
+---@param path string
+---@return boolean, string?
 function syscalls.umount(path)
 	local proc = Kocos.currentProcess()
 	local mntpath = Kocos.realPathFor(proc, path):sub(2)
@@ -1203,6 +1208,7 @@ function syscalls.umount(path)
 	end
 
 	Kocos.removeMount(mntpath)
+	return true
 end
 
 ---@return boolean, string?
