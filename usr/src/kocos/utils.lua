@@ -57,7 +57,6 @@ local luaglobals = {
 	"load",
 	"syscall",
 	"require",
-	"package",
 	"writefile",
 	"readfile",
 	"loadfile",
@@ -75,7 +74,14 @@ function table.luaglobals(src)
 	for _, k in ipairs(luaglobals) do
 		namespace[k] = table.copy(src[k])
 	end
-	namespace.package.loaded = {} -- fixed SO MUCH BS
+	-- fixed SO MUCH BS
+	namespace.package = {
+		preload = src.package.preload,
+		loaded = {},
+		path = src.package.path,
+		cpath = src.package.cpath,
+		config = src.package.config,
+	}
 
 	return namespace
 end

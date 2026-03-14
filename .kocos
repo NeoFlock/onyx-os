@@ -101,6 +101,7 @@ bin/sysinfo.lua regular 0 0 493
 init.lua regular 0 0 493
 lib directory 0 0 493
 lib/conf.lua regular 0 0 493
+lib/vafs.lua regular 0 0 493
 lib/errnos.lua regular 0 0 493
 lib/io.lua regular 0 0 493
 lib/modules directory 0 0 493
