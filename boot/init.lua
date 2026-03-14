@@ -36,9 +36,22 @@ local function bootSystem(system)
 	local ramfs = system.ramfs and readBootFile(system.ramfs) or nil
 
 	if system.protocol == "generic" then
-		assert(load(kernel, "=kernel"))()
+		-- cleanup mem
+		ramfs = nil
+		system = nil
+		conf = nil
+		local f = assert(load(kernel, "=kernel"))
+		kernel = nil
+		f()
 	elseif system.protocol == "kocos" then
-		assert(load(kernel, "=kernel"))("kocos", system.cmdline, ramfs)
+		local opts = {ramfs = ramfs, cmdline = system.cmdline}
+		-- cleanup mem
+		ramfs = nil
+		system = nil
+		conf = nil
+		local f = assert(load(kernel, "=kernel"))
+		kernel = nil
+		f("kocos", opts)
 	end
 	error("system halted")
 end

@@ -2,5 +2,8 @@
 # space separated, cmdline is all remaining parts
 # cmdline may be omitted for empty string
 
-procfs /proc
-devfs /dev
+ROOT /
+BOOT /boot
+TMP /tmp
+PROCFS /proc
+DEVFS /dev

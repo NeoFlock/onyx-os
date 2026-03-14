@@ -1,9 +1,50 @@
 --!lua
 
+-- TODO: completely rework this
+-- so the installer can just generate
+-- a good /etc/fstab
+
 -- Ensure root exists
 local function log(fmt, ...)
-	k.invokeDaemon("initd", "log", 1, string.format(fmt, ...))
+	k.invokeDaemon("initd", "log", "INFO", string.format(fmt, ...))
 end
+
+local function autoRoot()
+	local boot = k.sysinfo().bootAddress
+	if k.ctype(boot) == "filesystem" then return boot end
+
+	-- Check root partitions
+	for addr in k.clist("partition", true) do
+		---@type Kocos.partdev
+		local p = assert(k.cproxy(addr))
+		if p.getStorageDevice() == boot and p.getPartitionType() == "root" then
+			return addr
+		end
+	end
+	-- Just assume it works
+	return boot
+end
+
+---@return string?
+local function autoBoot()
+	local boot = k.sysinfo().bootAddress
+	if k.ctype(boot) == "filesystem" then return end
+
+	-- Check root partitions
+	for addr in k.clist("partition", true) do
+		---@type Kocos.partdev
+		local p = assert(k.cproxy(addr))
+		if p.getStorageDevice() == boot and p.getPartitionType() == "root" then
+			return addr
+		end
+	end
+	-- Just assume it works
+	return boot
+end
+
+log("initfs: reading fstab")
+local data = assert(readfile("/etc/fstab"))
+local fstab = string.split(data, "\n")
 
 if k.sysinfo().rootAddress == "ramfs" then
 	-- Check if installer
@@ -11,50 +52,54 @@ if k.sysinfo().rootAddress == "ramfs" then
 	if k.exists("/home") then
 		log("initfs: assumed installer due to /home")
 	else
-		log("initfs: finding real root")
-		local root = k.kcmdline()["ROOT"] or k.sysinfo().bootAddress
-		log("initfs: real root: %s", root)
-
-		log("initfs: unmounting old root")
+		log("initfs: removing old root")
 		assert(k.umount("/"))
-		log("initfs: mounting new root")
-		assert(k.mount("/", root))
 	end
 end
 
-local ensureExists = {
-	"/tmp",
-	"/dev",
-	"/proc",
-	"/mnt",
-	"/media",
+local function ensureBasicDirs()
+	local ensureExists = {
+		"/tmp",
+		"/dev",
+		"/proc",
+		"/mnt",
+		"/media",
+	}
+	for _, f in ipairs(ensureExists) do
+		if not k.exists(f) then
+			log("initfs: creating %s with 511 permissions", f)
+			assert(k.mkdir(f, 511))
+		end
+	end
+end
+
+---@type table<string, string>
+local vars = {
+	ROOT = autoRoot(),
+	BOOT = autoBoot() or "no-boot",
+	TMP = k.sysinfo().tmpAddress,
+	PROCFS = "procfs",
+	DEVFS = "devfs",
 }
-for _, f in ipairs(ensureExists) do
-	if not k.exists(f) then
-		log("initfs: creating %s with 511 permissions", f)
-		assert(k.mkdir(f, 511))
-	end
-end
-
-local tmpAddr = assert(k.sysinfo()).tmpAddress
-
-log("initfs: mounted tmp")
-if tmpAddr then assert(k.mountDev("/tmp", tmpAddr)) end
 
 log("initfs: loading fstab")
-local data = assert(readfile("/etc/fstab"))
-local fstab = string.split(data, "\n")
-
 for _, line in ipairs(fstab) do
 	if #line > 0 and line:sub(1, 1) ~= "#" then
 		local parts = string.split(line, " ")
 		local dev = parts[1]
 		local path = parts[2]
+		dev = vars[dev] or dev
 		local cmdline = table.concat(parts, " ", 3)
-		if k.ctype(dev) then
+		if k.isMount(path) then
+			log("initfs: %s already mounted", path)
+		elseif k.ctype(dev) then
 			assert(k.mount(path, dev, cmdline))
+			if path == "/" then
+				ensureBasicDirs()
+			end
 		else
 			log("initfs: missing device %s for %s", dev, path)
 		end
 	end
 end
+

@@ -136,11 +136,11 @@ assert(k.registerDaemon("initd", function(cpid, action, ...)
 		if not info then
 			return false, "getprocinfo failed"
 		end
-		if info.euid ~= 0 and info.uid ~= 0 then
+		if info.uid ~= 0 then
 			return false, "permission denied"
 		end
 		local l, msg = ...
-		Kocos.printk(l, msg)
+		Kocos.printk(Kocos["L_" .. tostring(l):upper()] or Kocos.L_INFO, msg)
 		return
 	end
 	if action == "markComplete" then
@@ -148,7 +148,7 @@ assert(k.registerDaemon("initd", function(cpid, action, ...)
 		if toComplete.pid ~= cpid then return end
 		toComplete.completionTime = k.uptime()
 		toComplete = nil
-		coroutine.yield()
+		k.sysyield()
 	end
 	if action == "timings" then
 		return {

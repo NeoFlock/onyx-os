@@ -41,14 +41,24 @@ end
 ---@field readByte fun(index: integer): integer
 ---@field writeByte fun(index: integer, byte: integer)
 
+--- boot - EFI partition, effectively where /boot lives
+--- root - KOCOS Root partition, effectively /
+--- data - Generic user partition, might be /home, /usr, or whatever the user wants
+--- bldr - Where the bootloader lives, effectively where to write /boot/init.lua too. Typically first 32KiB.
+---@alias Kocos.parttype string|"boot"|"root"|"data"|"bldr"
+
+Kocos.PART_READONLY = 1
+Kocos.PART_HIDDEN = 2
+Kocos.PART_PINNED = 4
+
 ---@class Kocos.partdev: Kocos.blockdev
 ---@field address string
 ---@field type "partition"
 ---@field slot integer
 ---@field getPartitionName fun(): string
 ---@field getStorageDevice fun(): string
----@field isReadonly fun(): string
----@field getPartitionType fun(): string
+---@field getPartitionFlags fun(): integer
+---@field getPartitionType fun(): Kocos.parttype
 ---@field getSectorOffset fun(): integer
 
 ---@param dev Kocos.dev
@@ -96,9 +106,9 @@ end
 ---@param sectorOff integer Starts at 0
 ---@param size integer In sectors
 ---@param partType string
----@param readOnly boolean
+---@param partFlags integer
 ---@return string?
-function Kocos.addDrivePartition(address, drive, name, sectorOff, size, partType, readOnly)
+function Kocos.addDrivePartition(address, drive, name, sectorOff, size, partType, partFlags)
 	if component.type(address) then return address end
 	return component.add {
 		address = address,
@@ -135,7 +145,7 @@ function Kocos.addDrivePartition(address, drive, name, sectorOff, size, partType
 			getStorageDevice = {
 				direct = true,
 			},
-			isReadonly = {
+			getPartitionFlags = {
 				direct = true,
 			},
 			getPartitionType = {
@@ -173,8 +183,8 @@ function Kocos.addDrivePartition(address, drive, name, sectorOff, size, partType
 			if method == "getStorageDevice" then
 				return drive.address
 			end
-			if method == "isReadonly" then
-				return readOnly
+			if method == "getPartitionFlags" then
+				return partFlags
 			end
 			if method == "getPartitionType" then
 				return partType
@@ -678,6 +688,8 @@ do
 
 	if Kocos.ramfs then
 		Kocos.mounts[""] = assert(Kocos.ramfsFor(Kocos.ramfs))
+		-- to no longer retain it, let the GC free it
+		Kocos.ramfs = nil
 		Kocos.printk(Kocos.L_INFO, "mounted / as ramfs")
 	elseif component.type(dev) == "filesystem" then
 		-- ultra free

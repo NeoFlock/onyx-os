@@ -66,8 +66,13 @@ function Kocos.getCmdlineStr(name, default)
 end
 
 if argv[1] == "kocos" then
-	Kocos.cmdline = Kocos.parseCmdline(argv[2] or "")
-	Kocos.ramfs = argv[3]
+	local opts = argv[2] or {}
+	Kocos.cmdline = Kocos.parseCmdline(opts.cmdline or "")
+	Kocos.ramfs = opts.ramfs
+
+	-- to prevent it from being retained for no reason
+	opts.ramfs = nil
+	opts.cmdline = nil
 else
 	-- unknown boot protocol, but no error
 end
@@ -84,7 +89,7 @@ Kocos.L_ERROR = 4
 Kocos.L_PANIC = 5
 Kocos.L_RAWTEXT = 6
 
-Kocos.minLog = Kocos.getCmdlineNum("MIN_LOG", 0)
+Kocos.minLog = Kocos.getCmdlineNum("MIN_LOG", 1)
 
 local oc = component.list("ocelot")()
 local serial = component.list("serial")()
@@ -244,12 +249,13 @@ syscalls.uptime = computer.uptime
 ---@field maxEnergy number
 
 function syscalls.sysinfo()
+	local rootMnt = Kocos.mounts[""]
 	---@type Kocos.sysinfo
 	return {
 		kernel = _KVERSION,
 		os = _OSVERSION,
 		bootAddress = computer.getBootAddress(),
-		rootAddress = Kocos.mounts[""].device,
+		rootAddress = rootMnt and rootMnt.device or computer.getBootAddress(),
 		tmpAddress = computer.tmpAddress(),
 		memfree = computer.freeMemory(),
 		memtotal = computer.totalMemory(),

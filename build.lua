@@ -313,7 +313,17 @@ local function runBuild(thing)
 
 		local koff = assert(string.find(ramimg, kernelCode, nil, true), "missing kernel")
 
-		local inst = string.format("local ramfs=%q local kernel=string.sub(ramfs, %d, %d) return assert(load(kernel,'=kocos'))('kocos','',ramfs)", ramimg, koff, koff+#kernelCode-1)
+		local inst = string.format([[
+
+local ramfs=%q
+local kernel=string.sub(ramfs, %d, %d)
+local f = assert(load(kernel,'=kocos'))
+kernel=nil
+local opts = {ramfs=ramfs}
+ramfs = nil
+return f('kocos', opts)
+
+]], ramimg, koff, koff+#kernelCode-1)
 
 		f = assert(io.open("installer.lua", "wb"))
 		f:write(inst)

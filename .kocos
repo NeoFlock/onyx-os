@@ -142,6 +142,7 @@ usr/lib/shutils.lua regular 0 0 493
 usr/lib/userdb.lua regular 0 0 493
 usr/src directory 0 0 438
 boot directory 0 0 493
+boot/ramimg-kocos.kar regular 0 0 384
 boot/vmkocos regular 0 0 493
 boot/orbit.conf regular 0 0 420
 boot/init.lua regular 0 0 493
