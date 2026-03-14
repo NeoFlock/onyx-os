@@ -106,6 +106,12 @@ function state:flushIno(ino, inode)
 	self.control:saveInode(ino, inode)
 end
 
+function state:modifiedIno(ino, inode)
+	if self.control.flushOnModify then
+		self:flushIno(ino, inode)
+	end
+end
+
 function state:flushInternalCaches()
 	for _, ino in ipairs(self.inodeCache) do
 		self:flushIno(ino.ino, ino.inode)
