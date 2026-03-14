@@ -66,7 +66,7 @@ local luaglobals = {
 ---@param src? _G
 ---@return _G
 function table.luaglobals(src)
-	src = src or _G
+	src = src or (Kocos.currentProcess and Kocos.currentProcess().namespace or _G)
 	local namespace = {}
 
 	namespace._G = namespace
