@@ -274,6 +274,7 @@ end
 ---@field lastModified integer
 ---@field diskUsed integer
 ---@field diskTotal integer
+---@field linkCount integer
 
 --- Only resolves direct mount
 ---@return Kocos.mountState, string
@@ -632,6 +633,7 @@ function Kocos._defaultManagedFS(req, ...)
 			inode = -1,
 			lastModified = state.dev.lastModified(path),
 			perms = 0,
+			linkCount = 1,
 		}
 
 		stat.diskSize = stat.size
@@ -986,6 +988,7 @@ function syscalls.touch(path, perms, ftype, uid, gid)
 	local truepath = Kocos.realPathFor(proc, path)
 	local mnt, subpath = Kocos.resolvePath(truepath, uid, gid, Kocos.P_WRITABLE, false, true)
 	if not mnt then return false, subpath end
+	if subpath == "" then return false, Kocos.EISMNT end
 	if not Kocos.existsOnMount(mnt, subpath) then
 		-- Checks specific to creating
 		local parent = Kocos.parentOf(truepath):sub(2)
@@ -1188,7 +1191,7 @@ function syscalls.mount(path, device, cmdline)
 	local proc = Kocos.currentProcess()
 	local mntpath = Kocos.realPathFor(proc, path):sub(2)
 	if Kocos.mounts[mntpath] then
-		return false, Kocos.EEXIST
+		return false, Kocos.EISMNT
 	end
 
 	local state, err = Kocos.mountFor(proxy, cmdline)

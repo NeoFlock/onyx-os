@@ -142,6 +142,7 @@ local function _ramfsDriver(req, state, ...)
 			uid = node.uid,
 			gid = node.gid,
 			inode = -1,
+			linkCount = 1,
 			lastModified = node.lastModified,
 			perms = node.perms,
 		}

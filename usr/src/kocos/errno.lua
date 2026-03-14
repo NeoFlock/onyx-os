@@ -52,6 +52,7 @@ Kocos.ENOSUPPORT = "not supported"
 Kocos.ENOSPC = "out of space"
 Kocos.ENOMEM = "not enough memory"
 Kocos.EBADDEV = "bad device type"
+Kocos.EISMNT = "is a mountpoint"
 
 ---@return table<string, string>
 function syscalls.errnos()

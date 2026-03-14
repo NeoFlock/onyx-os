@@ -21,6 +21,7 @@ for _, path in ipairs(paths) do
 	print("Disk Used:", string.memformat(s.diskUsed))
 	print("Disk Total:", string.memformat(s.diskTotal))
 	print("Ino:", s.inode)
+	print("Link count:", s.linkCount)
 	print("Perms:", perms.toString(s.perms))
 	print("Owner:", userdb.fromuid(s.uid, users).name)
 	print("Group:", userdb.fromgid(s.gid, groups).name)
