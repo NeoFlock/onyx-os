@@ -238,4 +238,28 @@ function lib.tokenAt(code, i)
 	return nil, "bad characater"
 end
 
+---@param code string
+---@param keepwhitespace boolean
+---@return luatok.token[]? toks, string? err, integer? errloc
+function lib.tokenize(code, keepwhitespace)
+	---@type luatok.token[]
+	local toks = {}
+
+	do -- tokenize
+		local i = 1
+		while true do
+			local tok, err = lib.tokenAt(code, i)
+			if err then return nil, err, i end
+			if not tok then break end
+			assert(#tok.data == tok.len)
+			i = i + tok.len
+
+			if (tok.type ~= "comment" and tok.type ~= "whitespace") or keepwhitespace then
+				table.insert(toks, tok)
+			end
+		end
+	end
+	return toks
+end
+
 return lib

@@ -1,33 +1,16 @@
 -- Lua minification library
 
 local luatok = require("luatok")
-
----@type luatok.tt[]
-local theBig3 = {"identifier", "keyword", "number"}
+local luapp = require("luapreproc")
 
 ---@param code string
 ---@return string
 return function(code)
-	---@type string[]
-	local buf = {}
-
-	---@type luatok.token[]
-	local toks = {}
-
-	do -- tokenize
-		local i = 1
-		while true do
-			local tok, err = luatok.tokenAt(code, i)
-			if err then error("byte " .. i .. ": " .. err) end
-			if not tok then break end
-			assert(#tok.data == tok.len)
-			i = i + tok.len
-
-			if tok.type ~= "comment" and tok.type ~= "whitespace" then
-				table.insert(toks, tok)
-			end
-		end
+	local toks, err, loc = luatok.tokenize(code, false)
+	if not toks then
+		error("byte " .. loc .. ":" .. err)
 	end
+	assert(toks)
 
 	---@type table<string, string>[]
 	local scope = {{}}
@@ -87,20 +70,5 @@ return function(code)
 		::continue::
 		end
 	end
-
-	do -- combining text in most efficient way
-		---@type luatok.tt
-		local lastToken = "whitespace"
-		for _, tok in ipairs(toks) do
-			local data = tok.data
-
-			if table.contains(theBig3, tok.type) and table.contains(theBig3, lastToken) then
-				table.insert(buf, " ")
-			end
-			table.insert(buf, data)
-			lastToken = tok.type
-		end
-	end
-
-	return table.concat(buf)
+	return luapp.mergeTokens(toks)
 end

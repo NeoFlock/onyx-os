@@ -108,12 +108,15 @@ lib/vafs.lua regular 0 0 493
 lib/errnos.lua regular 0 0 493
 lib/io.lua regular 0 0 493
 lib/modules directory 0 0 493
+lib/modules/managedfs.lua regular 0 0 493
 lib/modules/internet.lua regular 0 0 493
 lib/modules/nicefs.lua regular 0 0 493
 lib/modules/tunnelnet.lua regular 0 0 493
 lib/modules/devfs.lua regular 0 0 493
 lib/modules/mtpt.lua regular 0 0 493
+lib/modules/luaexec.lua regular 0 0 493
 lib/modules/procfs.lua regular 0 0 493
+lib/modules/karmemfs.lua regular 0 0 493
 lib/chacha20.lua regular 0 0 493
 lib/buffer.lua regular 0 0 493
 lib/md5.lua regular 0 0 493
@@ -140,6 +143,7 @@ usr/lib/kar.lua regular 0 0 493
 usr/lib/libash.lua regular 0 0 493
 usr/lib/luamin.lua regular 0 0 493
 usr/lib/perms.lua regular 0 0 493
+usr/lib/luapreproc.lua regular 0 0 493
 usr/lib/tar.lua regular 0 0 493
 usr/lib/shutils.lua regular 0 0 493
 usr/lib/userdb.lua regular 0 0 493

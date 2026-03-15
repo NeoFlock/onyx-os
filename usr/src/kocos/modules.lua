@@ -40,7 +40,7 @@ function Kocos.loadModuleCode(mod, code, chunkname)
 	if not f then return false, err end
 
 	local ok, handler = pcall(f)
-	if not ok then return false, handler end
+	if not ok then return false, tostring(handler) end
 	if type(handler) ~= "function" then return false, Kocos.EHWPOISON end
 	Kocos.mods[mod] = handler
 	-- init after module is defined.

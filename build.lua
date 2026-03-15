@@ -8,6 +8,12 @@ if 1<0 then
 	---@param v any
 	---@vararg type
 	function checkArg(n, v, ...) end
+	---@param path string
+	---@return string
+	function _EMBED(path) return "" end
+	---@param path string
+	---@return string
+	function _EMBED_MIN(path) return "" end
 end
 
 if not os.exec then
@@ -213,6 +219,7 @@ local buildInfo = {
 		type = "cat",
 		luamin = os.getenv("ONYX_MIN") ~= nil,
 		segment = os.getenv("ONYX_SEGMENT") ~= nil,
+		allowMacros = true,
 		files = {
 			"usr/src/kocos/utils.lua",
 			"usr/src/kocos/init.lua",
@@ -250,6 +257,44 @@ local function luamin(src)
 	return l(src)
 end
 
+---@param src string
+---@return string
+local function macro(src)
+	local luapp = require("luapreproc")
+	local l = require("luamin")
+	return luapp.preprocess(src, {
+		_EMBED = function(toks)
+			local path = luapp.resolveAsArgs(toks)
+			path = tostring(path)
+			local data = assert(readWholeFile(path))
+			local encoded = string.format("%q", data)
+			---@type luatok.token[]
+			return {
+				{
+					type = "string",
+					data = encoded,
+					len = #encoded,
+				},
+			}
+		end,
+		_EMBED_MIN = function(toks)
+			local path = luapp.resolveAsArgs(toks)
+			path = tostring(path)
+			local data = assert(readWholeFile(path))
+			data = l(data)
+			local encoded = string.format("%q", data)
+			---@type luatok.token[]
+			return {
+				{
+					type = "string",
+					data = encoded,
+					len = #encoded,
+				},
+			}
+		end,
+	})
+end
+
 local function runBuild(thing)
 	if built[thing] then return end
 	built[thing] = true
@@ -268,9 +313,12 @@ local function runBuild(thing)
 		for _, file in ipairs(entry.files) do
 			if file ~= "" then
 				print("Reading", file)
-				local fcode = readWholeFile(file)
+				local fcode = assert(readWholeFile(file))
 				if entry.luamin then
 					fcode = luamin(fcode)
+				end
+				if entry.allowMacros then
+					fcode = macro(fcode)
 				end
 				if entry.segment then
 					fcode = fcode .. "--[[KOCOS_SEGMENT]]"

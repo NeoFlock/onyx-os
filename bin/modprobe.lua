@@ -36,26 +36,48 @@ Options:
 end
 
 if remove then
+	local e = 0
 	for _, mod in ipairs(args) do
 		local ok, err = k.dkms_unload(mod)
 		if not quiet then
 			if ok then
 				print("Removed", mod)
 			else
-				print(err)
+				io.ewrite("Removing ", mod, ": ", err, "\n")
+				e = e + 1
 			end
 		end
 	end
+	return e
 else
-	for _, mod in ipairs(args) do
-		local was = k.dkms_loaded(mod)
-		local ok, err = k.dkms_load(mod, reload)
-		if not quiet then
-			if ok then
-				print(was and "Reloaded" or "Loaded", mod)
-			else
-				print(err)
+	local e = 0
+	if #args == 0 then
+		for _, mod in ipairs(k.dkms_list()) do
+			if not string.startswith(mod, "KOCOS_") then
+				local ok, err = k.dkms_load(mod, true)
+				if not quiet then
+					if ok then
+						if verbose then print("Reloaded", mod) end
+					else
+						io.ewrite("Loading ", mod, ": ", err, "\n")
+						e = e + 1
+					end
+				end
+			end
+		end
+	else
+		for _, mod in ipairs(args) do
+			local was = k.dkms_loaded(mod)
+			local ok, err = k.dkms_load(mod, reload)
+			if not quiet then
+				if ok then
+					if verbose then print(was and "Reloaded" or "Loaded", mod) end
+				else
+					io.ewrite("Loading ", mod, ": ", err, "\n")
+					e = e + 1
+				end
 			end
 		end
 	end
+	return e
 end
