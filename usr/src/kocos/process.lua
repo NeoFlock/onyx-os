@@ -490,10 +490,7 @@ function syscalls.getprocinfo(pid, ...)
 			if target.parent then info.parent = target.parent.pid end
 		elseif v == "tree" then
 			if target.parent then info.parent = target.parent.pid end
-			info.children = {}
-			for cpid in pairs(target.children) do
-				table.insert(info.children, cpid)
-			end
+			info.children = table.keysof(target.children)
 		elseif v == "state" then
 			if target.parent then info.parent = target.parent.pid end
 			if target.debugger then info.tracer = target.debugger.pid end
@@ -505,10 +502,7 @@ function syscalls.getprocinfo(pid, ...)
 		elseif v == "namespace" then
 			if isTrusted then info.namespace = target.namespace end
 		elseif v == "signals" then
-			info.signals = {}
-			for sig in pairs(target.signalHandlers) do
-				table.insert(info.signals, sig)
-			end
+			info.signals = table.keysof(info.signals)
 		end
 	end
 	return info

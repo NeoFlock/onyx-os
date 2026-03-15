@@ -2,14 +2,6 @@
 
 local procAddr = "procfs"
 
-component.add {
-	address = procAddr,
-	type = "procfs",
-	invoke = function() end,
-	methods = {},
-	slot = -1,
-}
-
 ---@type table<string, fun(): string>
 local rootFiles = {
 	cmdline = function() return Kocos.encodeCmdline(Kocos.cmdline) .. "\n" end,
@@ -39,13 +31,23 @@ local rootFiles = {
 ---@param req string
 return function(req, ...)
 	local readonlyPerms = 4*64 + 4*8 + 4
+	if req == "dkms_init" then
+		component.add {
+			address = procAddr,
+			type = "procfs",
+			invoke = function() end,
+			methods = {},
+			slot = -1,
+		}
+		return
+	end
 	if req == "dkms_close" then
 		component.remove(procAddr)
 		return
 	end
 	if req == "FS-mount" then
 		local dev = ...
-		if dev.address == "procfs" then
+		if dev.address == procAddr then
 			return "procfs"
 		end
 		return

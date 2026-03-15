@@ -217,7 +217,7 @@ end
 
 ---@class Kocos.mountState
 ---@field device string
----@field driver Kocos.module
+---@field driver? Kocos.module
 ---@field state any
 ---@field cmdline string
 
@@ -312,6 +312,7 @@ end
 ---@param path string
 ---@return Kocos.fstat?, string?
 function Kocos.statMount(mount, path)
+	if not mount.driver then return nil, Kocos.ENODRIVER end
 	return mount.driver("FS-stat", mount.state, path)
 end
 
@@ -439,7 +440,7 @@ function Kocos.removeMount(path)
 	local mnt = Kocos.mounts[path]
 	assert(mnt, Kocos.ENODEV)
 	Kocos.mounts[path] = nil
-	mnt.driver("FS-umount", mnt.state)
+	if mnt.driver then mnt.driver("FS-umount", mnt.state) end
 end
 
 ---@class Kocos.managedfs.frecord
@@ -677,6 +678,41 @@ function Kocos._defaultManagedFS(req, ...)
 	end
 	-- not handled
 end
+
+---@param req "dkms_added"|"dkms_removed"
+---@param mod string
+---@param driver Kocos.module
+function Kocos._fsModListener(req, mod, driver)
+	if req == "dkms_removed" then
+		for p, mnt in pairs(Kocos.mounts) do
+			if mnt.driver == driver then
+				Kocos.printkf(Kocos.L_DEBUG, "Module %q for /%s removed, mountpoint is in dead state", mod, p)
+				mnt.driver = nil
+			end
+		end
+		return
+	end
+	if req == "dkms_added" then
+		for p, mnt in pairs(Kocos.mounts) do
+			if not mnt.driver then
+				local dev = component.proxy(mnt.device)
+				local state, err = driver("FS-mount", dev, mnt.cmdline, mnt.state)
+				if state or err then
+					if err then
+						Kocos.printkf(Kocos.L_WARN, "Module %q failed to recover /%s", mod, p)
+						return nil, err
+					end
+					Kocos.printkf(Kocos.L_DEBUG, "Module %q successfully recovered /%s", mod, p)
+					mnt.state = state
+					mnt.driver = driver
+				end
+			end
+		end
+		return
+	end
+end
+
+Kocos.listen(Kocos._fsModListener)
 
 Kocos.printk(Kocos.L_INFO, "loaded managedfs")
 
@@ -1015,7 +1051,7 @@ function syscalls.sync(dev)
 	Kocos.refetchPartitions()
 	local synced = 0
 	for _, mnt in pairs(Kocos.mounts) do
-		if mnt.device == (dev or mnt.device) then
+		if mnt.device == (dev or mnt.device) and mnt.driver then
 			local ok, err = mnt.driver("FS-sync", mnt.state)
 			if not ok then return nil, err end
 			synced = synced + 1

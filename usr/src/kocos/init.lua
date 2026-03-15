@@ -89,7 +89,7 @@ Kocos.L_ERROR = 4
 Kocos.L_PANIC = 5
 Kocos.L_RAWTEXT = 6
 
-Kocos.minLog = Kocos.getCmdlineNum("MIN_LOG", 1)
+Kocos.minLog = Kocos.getCmdlineNum("MIN_LOG", Kocos.L_WARN)
 
 local oc = component.list("ocelot")()
 local serial = component.list("serial")()
@@ -214,6 +214,11 @@ function syscall(sysname, ...)
 	if not sysfunc then return nil, Kocos.ENOSYS end
 
 	local t = {xpcall(sysfunc, debug.traceback, ...)}
+
+	-- Fix really bad state errors
+	while Kocos.currentProcess() ~= proc do
+		Kocos.popProcess()
+	end
 
 	if proc.debugger then
 		Kocos.sendSignal(proc.debugger, "SYSRET", sysname, {...}, t)

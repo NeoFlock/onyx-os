@@ -5,8 +5,8 @@
 -- a good /etc/fstab
 
 -- Ensure root exists
-local function log(fmt, ...)
-	k.invokeDaemon("initd", "log", "INFO", string.format(fmt, ...))
+local function log(severity, fmt, ...)
+	k.invokeDaemon("initd", "log", severity, string.format(fmt, ...))
 end
 
 local function autoRoot()
@@ -42,17 +42,17 @@ local function autoBoot()
 	return boot
 end
 
-log("initfs: reading fstab")
+log("DEBUG", "initfs: reading fstab")
 local data = assert(readfile("/etc/fstab"))
 local fstab = string.split(data, "\n")
 
 if k.sysinfo().rootAddress == "ramfs" then
 	-- Check if installer
-	log("initfs: ramfs root!")
+	log("DEBUG", "initfs: ramfs root!")
 	if k.exists("/home") then
-		log("initfs: assumed installer due to /home")
+		log("DEBUG", "initfs: assumed installer due to /home")
 	else
-		log("initfs: removing old root")
+		log("INFO", "initfs: removing old root")
 		assert(k.umount("/"))
 	end
 end
@@ -67,7 +67,7 @@ local function ensureBasicDirs()
 	}
 	for _, f in ipairs(ensureExists) do
 		if not k.exists(f) then
-			log("initfs: creating %s with 511 permissions", f)
+			log("DEBUG", "initfs: creating %s with 511 permissions", f)
 			assert(k.mkdir(f, 511))
 		end
 	end
@@ -82,7 +82,7 @@ local vars = {
 	DEVFS = "devfs",
 }
 
-log("initfs: loading fstab")
+log("DEBUG", "initfs: loading fstab")
 for _, line in ipairs(fstab) do
 	if #line > 0 and line:sub(1, 1) ~= "#" then
 		local parts = string.split(line, " ")
@@ -91,14 +91,14 @@ for _, line in ipairs(fstab) do
 		dev = vars[dev] or dev
 		local cmdline = table.concat(parts, " ", 3)
 		if k.isMount(path) then
-			log("initfs: %s already mounted", path)
+			log("WARN", "initfs: %s already mounted", path)
 		elseif k.ctype(dev) then
 			assert(k.mount(path, dev, cmdline))
 			if path == "/" then
 				ensureBasicDirs()
 			end
 		else
-			log("initfs: missing device %s for %s", dev, path)
+			log("WARN", "initfs: missing device %s for %s", dev, path)
 		end
 	end
 end

@@ -20,19 +20,19 @@ function Kocos.loadModule(mod, reload)
 	Kocos.popProcess()
 	if not code then return false, err end
 
-	if Kocos.hasModule(mod) then
-		if reload then
-			Kocos.removeModule(mod)
-		else
-			return true
-		end
+	if Kocos.hasModule(mod) and not reload then
+		return true
 	end
 
 	return Kocos.loadModuleCode(mod, code, "=" .. path)
 end
 
+---@param mod string
+---@param code string
+---@param chunkname? string
 ---@return boolean, string?
 function Kocos.loadModuleCode(mod, code, chunkname)
+	chunkname = chunkname or ("=" .. mod)
 	-- remove old one
 	Kocos.removeModule(mod)
 
@@ -46,6 +46,7 @@ function Kocos.loadModuleCode(mod, code, chunkname)
 	-- init after module is defined.
 	-- This allows a parititon table driver to re-load partitions for example
 	pcall(handler, "dkms_init")
+	Kocos.notifyListeners("dkms_added", mod, handler)
 	return true
 end
 
@@ -53,6 +54,38 @@ function Kocos.removeModule(mod)
 	local old = Kocos.mods[mod]
 	if old then
 		old("dkms_close")
+		Kocos.notifyListeners("dkms_removed", mod, old)
 	end
 	Kocos.mods[mod] = nil
+end
+
+function syscalls.dkms_list()
+	return table.keysof(Kocos.mods)
+end
+
+function syscalls.dkms_loaded(mod)
+	return Kocos.hasModule(mod)
+end
+
+---@param mod string
+---@param reload boolean
+function syscalls.dkms_load(mod, reload)
+	if Kocos.currentProcess().uid ~= 0 then return false, Kocos.EACCESS end
+	return Kocos.loadModule(mod, reload)
+end
+
+---@param mod string
+---@param code string
+---@param file? string
+function syscalls.dkms_loadcode(mod, code, file)
+	if Kocos.currentProcess().uid ~= 0 then return false, Kocos.EACCESS end
+	return Kocos.loadModuleCode(mod, code, file)
+end
+
+---@param mod string
+---@return boolean, string?
+function syscalls.dkms_unload(mod)
+	if Kocos.currentProcess().uid ~= 0 then return false, Kocos.EACCESS end
+	Kocos.removeModule(mod)
+	return true
 end

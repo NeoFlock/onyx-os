@@ -43,6 +43,7 @@ bin/cp.lua regular 0 0 493
 bin/highlight.lua regular 0 0 493
 bin/pwd.lua regular 0 0 493
 bin/random.lua regular 0 0 493
+bin/modprobe.lua regular 0 0 493
 bin/opk.lua regular 0 0 493
 bin/lua.lua regular 0 0 493
 bin/daemons.lua regular 0 0 493
@@ -81,9 +82,11 @@ bin/mkramfsdev.lua regular 0 0 493
 bin/rm.lua regular 0 0 493
 bin/nologin.lua regular 0 0 493
 bin/uptime.lua regular 0 0 493
+bin/lsmod.lua regular 0 0 493
 bin/onit-analyze.lua regular 0 0 493
 bin/clear.lua regular 0 0 493
 bin/time.lua regular 0 0 493
+bin/rmmod.lua regular 0 0 493
 bin/dmesg.lua regular 0 0 493
 bin/strace.lua regular 0 0 493
 bin/mkfs.nicefs.lua regular 0 0 493
@@ -142,7 +145,6 @@ usr/lib/shutils.lua regular 0 0 493
 usr/lib/userdb.lua regular 0 0 493
 usr/src directory 0 0 438
 boot directory 0 0 493
-boot/ramimg-kocos.kar regular 0 0 384
 boot/vmkocos regular 0 0 493
 boot/orbit.conf regular 0 0 420
 boot/init.lua regular 0 0 493

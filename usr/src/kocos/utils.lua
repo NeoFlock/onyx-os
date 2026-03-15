@@ -23,6 +23,15 @@ function table.copy(t)
 	end
 end
 
+---@generic K, V
+---@param t table<K, V>
+---@return K[]
+function table.keysof(t)
+	local keys = {}
+	for k in pairs(t) do table.insert(keys, k) end
+	return keys
+end
+
 local luaglobals = {
 	"_VERSION",
 	"_OSVERSION",
