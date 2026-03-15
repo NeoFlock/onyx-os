@@ -604,6 +604,8 @@ function syscalls.open(path, mode)
 		---@type Kocos.descriptor?, string?
 		local handle, err = mnt.driver("FS-open", mnt.state, subpath, mode)
 		if not handle then return nil, err or Kocos.EHWPOISON end
+		-- prevents buggy behavior
+		setmetatable(handle, nil)
 		proc.fds[availableFd] = handle
 		return availableFd
 	elseif stat.type == "fifo" then

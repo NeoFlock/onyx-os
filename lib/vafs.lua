@@ -69,6 +69,10 @@
 --- Allocate a new inode in a directory. This may be in the root inode.
 --- The name is checked to not have existed before.
 ---@field allocInode fun(self, dirIno: integer, dirInode: vafs.inode, name: string, inode: vafs.inode): boolean, string?
+--- Make a hardlink to an inode by ino.
+--- This should increase the linkCount by 1 if successful.
+--- VAFS will pretend this is the case when managing the cache.
+---@field linkInode fun(self, dirIno: integer, dirInode: vafs.inode, name: string, ino: integer): boolean, string?
 
 local vafs = {}
 vafs.DEFAULT_MAX_INOCACHE = 128

@@ -26,6 +26,8 @@ function syscalls.socket(domain, type, protocol)
 
 	local proc = Kocos.currentProcess()
 	local avail = Kocos.availableDescriptorFor(proc)
+	-- just like in syscalls.open()
+	setmetatable(socket, nil)
 	proc.fds[avail] = socket
 	return avail, tostring(modname)
 end

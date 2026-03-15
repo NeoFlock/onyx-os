@@ -743,7 +743,14 @@ function syscalls.registerModule(modname, module)
 	if proc.uid ~= 0 then return false, Kocos.EACCESS end
 	if Kocos.mods[modname] then return false, Kocos.EADDRINUSE end
 	table.insert(proc.boundKmod, modname)
-	Kocos.mods[modname] = module
+	Kocos.mods[modname] = function(...)
+		local t = Kocos.procCall(proc, module, ...)
+		if t[1] then
+			return table.unpack(t, 2)
+		else
+			return nil, t[2]
+		end
+	end
 	return true
 end
 
