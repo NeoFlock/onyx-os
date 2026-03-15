@@ -1,0 +1,4 @@
+# vim: set ft=bash:
+
+alias reboot='poweroff --reboot'
+alias doas=sudo

@@ -26,6 +26,32 @@ exec.lastExit = 0
 ---@type table<string, string>
 exec.aliases = {}
 
+---@param path string
+---@param std ash.stdio
+function exec.runScript(path, std)
+	local code, err = readfile(path)
+	if not code then
+		k.write(std.err, "source: " .. err .. "\n")
+		exec.lastExit = 1
+		return 1
+	end
+
+	exec.lastExit = 0
+	local cmds, err, loc = libash.parse(code)
+	if not cmds then
+		assert(err)
+		assert(loc)
+		local line = libash.lineOfOffset(code, loc)
+		k.write(std.err, "source: " .. path .. ":" .. line .. " " .. err .. "\n")
+		exec.lastExit = 2
+		return 2
+	end
+	for _, cmd in ipairs(cmds) do
+		exec.lastExit = exec.runCommand(cmd, std)
+	end
+	return exec.lastExit
+end
+
 ---@alias ash.stdio {inp: integer, out: integer, err: integer, term: integer}
 
 ---@type table<string, fun(args: string[], std: ash.stdio, env: table<string, string>): integer>
@@ -33,6 +59,13 @@ local builtin = {}
 
 function builtin.exit(args)
 	k.exit(tonumber(args[1]))
+end
+
+function builtin.source(args, std)
+	for _, arg in ipairs(args) do
+		exec.runScript(arg, std)
+	end
+	return exec.lastExit
 end
 
 function builtin.cd(args, std)
@@ -409,7 +442,22 @@ end
 local shlvl = 1 + (tonumber(os.getenv("SHLVL")) or 0)
 os.setenv("SHLVL", tostring(shlvl))
 
+local scripts = {
+	"/etc/.ashrc",
+	shutils.getHome() .. "/.ashrc",
+}
+
 print("\x1b[36mAsh\x1b[32m v0.0.1\x1b[0m")
+for _, script in ipairs(scripts) do
+	if k.exists(script) then
+		exec.runScript(script, {
+			inp = 0,
+			out = 1,
+			err = 2,
+			term = 3,
+		})
+	end
+end
 local history = {}
 while true do
 	os.setenv("PWD", shutils.getWorkingDirectory())

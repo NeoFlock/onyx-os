@@ -32,7 +32,7 @@ local function managedfsHandler(desc, ev, ...)
 end
 
 ---@type Kocos.module
-return function(req, ...)
+local function managedfs(req, ...)
 	if req == "FS-mount" then
 		---@type Kocos.dev, string
 		local dev, cmdline = ...
@@ -100,7 +100,7 @@ return function(req, ...)
 			}
 			for path, rec in pairs(state.frecords) do
 				---@type Kocos.fstat?
-				local stat = Kocos._defaultManagedFS("FS-stat", state, path)
+				local stat = managedfs("FS-stat", state, path)
 				if stat then
 					table.insert(lines, string.format("%s %s %d %d %d", path, stat.type, stat.uid, stat.gid, stat.perms))
 				else
@@ -233,3 +233,5 @@ return function(req, ...)
 	end
 	-- not handled
 end
+
+return managedfs

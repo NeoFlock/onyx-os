@@ -60,6 +60,7 @@ local function permsOf(path)
 	if path == "etc/fstab" then return "rw-r--r--" end
 	if path == "home/helloWorld.lua" then return "rwxrwxrwx" end
 	if path == "etc/onit.d" then return "rw-r--r--" end
+	if path == "etc/.ashrc" then return "rw-r--r--" end
 	if string.startswith(path, "etc/onit.d/") then return "rw-r--r--" end
 	if path == "usr/bin" then return "rwxr-xr-x" end
 	if string.startswith(path, "usr/bin/") then return "rwxr-xr-x" end

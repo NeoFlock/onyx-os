@@ -26,7 +26,7 @@ return function(req, ...)
 			local start = string.tonumBE(chunk:sub(25, 28))
 			local len = string.tonumBE(chunk:sub(29, 32))
 			if name ~= "" then
-				local addr = "mtpt" .. i .. "@" .. drive.address
+				local addr = "P" .. i .. "-" .. drive.address
 				Kocos.addDrivePartition(addr, drive, name, start - 1, len, type, false)
 				table.insert(parts, addr)
 			end

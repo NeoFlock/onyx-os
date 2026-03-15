@@ -4,6 +4,10 @@ local userdb = require("userdb")
 
 local shutils = {}
 
+function shutils.getHome()
+	return os.getenv("HOME") or userdb.getHome(shutils.getUser())
+end
+
 function shutils.getWorkingDirectory()
 	return assert(k.chdir("."))
 end
