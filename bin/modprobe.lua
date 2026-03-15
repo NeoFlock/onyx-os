@@ -53,7 +53,7 @@ else
 	local e = 0
 	if #args == 0 then
 		for _, mod in ipairs(k.dkms_list()) do
-			if not string.startswith(mod, "KOCOS_") then
+			if not string.startswith(mod, "KOCOS_") and not string.startswith(mod, "DAEMON_") then
 				local ok, err = k.dkms_load(mod, true)
 				if not quiet then
 					if ok then

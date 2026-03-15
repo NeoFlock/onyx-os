@@ -732,6 +732,21 @@ function syscalls.kill(pid, signal, ...)
 	return true
 end
 
+---@param modname string
+---@param module Kocos.module
+---@return boolean, string?
+function syscalls.registerModule(modname, module)
+	if not string.startswith(modname, "DAEMON_") then
+		modname = "DAEMON_" .. modname
+	end
+	local proc = Kocos.currentProcess()
+	if proc.uid ~= 0 then return false, Kocos.EACCESS end
+	if Kocos.mods[modname] then return false, Kocos.EADDRINUSE end
+	table.insert(proc.boundKmod, modname)
+	Kocos.mods[modname] = module
+	return true
+end
+
 Kocos.rawLoad = load
 function load(chunk, chunkname, mode, env)
 	local proc = Kocos.currentProcess()
