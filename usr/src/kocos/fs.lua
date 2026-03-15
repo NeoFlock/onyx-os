@@ -41,10 +41,10 @@ end
 ---@field readByte fun(index: integer): integer
 ---@field writeByte fun(index: integer, byte: integer)
 
---- boot - EFI partition, effectively where /boot lives
+--- bldr - EFI partition, effectively where /boot lives
+--- boot - Where the bootloader lives, effectively where to write /boot/init.lua too. Typically first 32KiB.
 --- root - KOCOS Root partition, effectively /
 --- data - Generic user partition, might be /home, /usr, or whatever the user wants
---- bldr - Where the bootloader lives, effectively where to write /boot/init.lua too. Typically first 32KiB.
 ---@alias Kocos.parttype string|"boot"|"root"|"data"|"bldr"
 
 Kocos.PART_READONLY = 1

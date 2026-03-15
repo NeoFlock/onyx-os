@@ -34,7 +34,7 @@ local function autoBoot()
 	for addr in k.clist("partition", true) do
 		---@type Kocos.partdev
 		local p = assert(k.cproxy(addr))
-		if p.getStorageDevice() == boot and p.getPartitionType() == "root" then
+		if p.getStorageDevice() == boot and p.getPartitionType() == "bldr" then
 			return addr
 		end
 	end
