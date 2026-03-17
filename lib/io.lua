@@ -4,8 +4,6 @@ local buffer = require("buffer")
 
 io={}
 
-io.ALL_PERMS = 511
-
 ---@param filename string
 ---@param mode? "r"|"w"|"a"|"rb"|"wb"|"ab"
 ---@return buffer?, string?
@@ -14,13 +12,19 @@ function io.open(filename, mode)
 	local textmode = #mode == 1
 	mode = mode:sub(1, 1)
 	if mode ~= "r" and not k.exists(filename) then
-		local ok, err = k.touch(filename, io.ALL_PERMS)
+		local ok, err = k.mknod(filename, "regular")
 		if not ok then return nil, err end
 	end
 	local fd, err = k.open(filename, mode)
 	if not fd then return nil, err end
 
 	return io.wrap(fd, mode == "r", textmode), nil
+end
+
+---@param path string
+---@return boolean, string?
+function io.mkdir(path)
+	return k.mknod(path, "directory")
 end
 
 ---@param fd integer

@@ -1,7 +1,8 @@
 # For the kernel
 - Unmount automatically when device is removed
-- Support the basic fs operations missing (`mkdir`, `remove`, `chown`, `chmod`, `symlink`, `link`)
+- Support the basic fs operations missing (`remove`, `chown`, `chmod`, `symlink`, `link`)
 - Add some kind of inotify-like system
+- (maybe) some way to reload the entire kernel
 
 # For the build system
 - Make `luatok` support all Lua syntax properly

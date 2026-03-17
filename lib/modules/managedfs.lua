@@ -121,6 +121,10 @@ local function managedfs(req, ...)
 		---@type Kocos.managedfs, string, string
 		local state, path, mode = ...
 
+		if state.readonly and mode ~= "r" then
+			return false, Kocos.EROFS
+		end
+
 		local fd, err = state.dev.open(path, mode)
 		if not fd then return nil, err end
 
@@ -138,11 +142,32 @@ local function managedfs(req, ...)
 		}
 	end
 	if req == "FS-touch" then
+		---@type Kocos.managedfs, string, integer?
+		local state, path, mtime = ...
+		if state.readonly then
+			return false, Kocos.EROFS
+		end
+		if state.dev.isDirectory(path) then
+			-- TODO: figure out smth ig
+			return true
+		elseif mtime == nil then
+			-- can only set current now as the mtime
+			state.dev.close(state.dev.open(path, "a"))
+		else
+			return Kocos.ENOSUPPORT
+		end
+		return true
+	end
+	if req == "FS-mknod" then
 		---@type Kocos.managedfs, string, Kocos.filetype, integer, integer, integer
 		local state, path, ftype, perms, uid, gid = ...
 
+		if state.readonly then
+			return false, Kocos.EROFS
+		end
+
 		if ftype ~= "regular" and ftype ~= "directory" and not state.frecords then
-			return false, Kocos.EPERM
+			return false, Kocos.ENOSUPPORT
 		end
 
 		if path == metadata and ftype ~= "regular" then
@@ -153,7 +178,7 @@ local function managedfs(req, ...)
 			local ok, err = state.dev.makeDirectory(path)
 			if not ok then return false, err end
 		else
-			local f, err = state.dev.open(path, "a")
+			local f, err = state.dev.open(path, "w")
 			if not f then return false, err end
 			state.dev.close(f)
 		end
@@ -163,7 +188,7 @@ local function managedfs(req, ...)
 			state.frecords = {}
 		end
 
-		if state.frecords then
+		if state.frecords and path ~= metadata then
 			state.frecords[path] = {
 				ftype = ftype,
 				perms = perms,

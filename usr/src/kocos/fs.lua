@@ -776,39 +776,53 @@ function syscalls.exists(path, traverse)
 end
 
 ---@param path string
----@param perms? integer
 ---@param ftype? Kocos.filetype
+---@param perms? integer
 ---@param uid? integer
 ---@param gid? integer
 ---@return boolean, string?
-function syscalls.touch(path, perms, ftype, uid, gid)
+function syscalls.mknod(path, ftype, perms, uid, gid)
 	local proc = Kocos.currentProcess()
-	perms = perms or Kocos.P_DEFAULT
 	ftype = ftype or "regular"
+	perms = perms or Kocos.P_DEFAULT
 	uid = uid or proc.uid
 	gid = gid or proc.gid
-
 	if type(path) ~= "string" then return false, Kocos.EINVAL end
-	if type(perms) ~= "number" then return false, Kocos.EINVAL end
 	if type(ftype) ~= "string" then return false, Kocos.EINVAL end
+	if not Kocos.validFileType(ftype) then return false, Kocos.EINVAL end
+	if type(perms) ~= "number" then return false, Kocos.EINVAL end
 	if type(uid) ~= "number" then return false, Kocos.EINVAL end
 	if type(gid) ~= "number" then return false, Kocos.EINVAL end
-	if not Kocos.validFileType(ftype) then return false, Kocos.EINVAL end
-	if ftype == "symlink" then return false, Kocos.EPERM end
-	perms = math.floor(perms)
+	perms = math.floor(perms) % 512
 	uid = math.floor(uid)
 	gid = math.floor(gid)
-
 	local truepath = Kocos.realPathFor(proc, path)
 	local mnt, subpath = Kocos.resolvePath(truepath, uid, gid, Kocos.P_WRITABLE, false, true)
 	if not mnt then return false, subpath end
-	if subpath == "" then return false, Kocos.EISMNT end
-	if not Kocos.existsOnMount(mnt, subpath) then
-		-- Checks specific to creating
-		local parent = Kocos.parentOf(truepath):sub(2)
-		if not Kocos.existsOnMount(mnt, parent) then return false, Kocos.ENOENT end
-	end
-	return mnt.driver("FS-touch", mnt.state, subpath, ftype, perms, uid, gid)
+	return mnt.driver("FS-mknod", mnt.state, subpath, ftype, perms, uid, gid)
+end
+
+function syscalls.chown(path, uid, gid)
+	-- TODO: chown
+end
+
+function syscalls.chmod(path, mode)
+	 -- TODO: chmod
+end
+
+---@param path string
+---@param mtime? integer
+---@return boolean, string?
+function syscalls.touch(path, mtime)
+	if type(path) ~= "string" then return false, Kocos.EINVAL end
+	if type(mtime) ~= "number" and type(mtime) ~= "nil" then return false, Kocos.EINVAL end
+
+	local proc = Kocos.currentProcess()
+
+	local truepath = Kocos.realPathFor(proc, path)
+	local mnt, subpath = Kocos.resolvePath(truepath, proc.uid, proc.gid, Kocos.P_WRITABLE, false, false)
+	if not mnt then return false, subpath end
+	return mnt.driver("FS-touch", mnt.state, subpath, mtime)
 end
 
 ---@param dev? string

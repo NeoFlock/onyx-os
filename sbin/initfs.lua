@@ -67,8 +67,8 @@ local function ensureBasicDirs()
 	}
 	for _, f in ipairs(ensureExists) do
 		if not k.exists(f) then
-			log("DEBUG", "initfs: creating %s with 511 permissions", f)
-			assert(k.mkdir(f, 511))
+			log("DEBUG", "initfs: creating %s with default permissions", f)
+			assert(k.mknod(f, "directory"))
 		end
 	end
 end
@@ -92,6 +92,9 @@ for _, line in ipairs(fstab) do
 		local cmdline = table.concat(parts, " ", 3)
 		if k.isMount(path) then
 			log("WARN", "initfs: %s already mounted", path)
+			if path == "/" then
+				ensureBasicDirs()
+			end
 		elseif k.ctype(dev) then
 			assert(k.mount(path, dev, cmdline))
 			if path == "/" then
