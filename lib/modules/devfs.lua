@@ -133,9 +133,14 @@ function devfs._blockDevHandler(handle, req, ...)
 	end
 	if req == "write" then
 		if handle._sec > lastSec then return false, Kocos.ENOSPC end
+		---@type string
 		local data = ...
-		vdev.writeSector(handle._sec, data)
-		handle._sec = handle._sec + 1
+		if #data % ss ~= 0 then return false, "misaligned" end
+		local bc = #data / ss
+		for i=1,bc do
+			vdev.writeSector(handle._sec + i - 1, data)
+		end
+		handle._sec = handle._sec + bc
 		return true
 	end
 	if req == "seek" then
@@ -152,7 +157,7 @@ function devfs._blockDevHandler(handle, req, ...)
 		end
 
 		if cur % ss ~= 0 then
-			return nil, "misaligned read"
+			return nil, "misaligned"
 		end
 		handle._sec = 1 + (cur / ss)
 		return cur
