@@ -64,11 +64,12 @@
 --- open(path, "w") will call this with 0.
 --- inode.size <= blocks * getBlockSize()
 ---@field truncateBlocks fun(self, ino: integer, inode: vafs.inode, blocks: integer): boolean, string?
---- Save an inode
+--- Save an inode to disk
 ---@field saveInode fun(self, ino: integer, inode: vafs.inode)
 --- Allocate a new inode in a directory. This may be in the root inode.
 --- The name is checked to not have existed before.
----@field allocInode fun(self, dirIno: integer, dirInode: vafs.inode, name: string, inode: vafs.inode): boolean, string?
+--- Should return the ino of the new node.
+---@field allocInode fun(self, dirIno: integer, dirInode: vafs.inode, name: string, inode: vafs.inode): integer?, string?
 --- Make a hardlink to an inode by ino.
 --- This should increase the linkCount by 1 if successful.
 --- VAFS will pretend this is the case when managing the cache.

@@ -1,6 +1,6 @@
 # For the kernel
 - Unmount automatically when device is removed
-- Support the basic fs operations missing (`remove`, `chown`, `chmod`, `symlink`, `link`)
+- Support the basic fs operations missing (`rename`, `symlink`, `link`)
 - Add some kind of inotify-like system
 - (maybe) some way to reload the entire kernel
 
@@ -12,9 +12,9 @@
 # For the OS
 - support hashed passwords
 - support `/etc/shadow`
-- making the current coreutils match the POSIX/GNU versions
+- making the current coreutils similar to the POSIX/GNU versions
 - implementing more coreutils
-- Add support for various networking stacks
+- Add support for various networking stacks (atomnet `AF_ANET`, minitel `AF_MTEL`)
 - add async I/O support to the networking drivers
 - add Lua 5.2 support
 
@@ -38,12 +38,14 @@
 
 While the KOCOS kernel supports it through ramfs,
 the Orbit bootloader does not. Also, associated
-firmware should be provided, likely one which supports
-loading the first 32KiB or first sector as MBR bootcode.
+firmware should be provided, with support for:
+- loading bootstrap code from MBR
+- loading boot partition from MTPT, OSDI, KPR, GPT
+- loading first 32KiB
 
 The Orbit bootloader would use the boot address as
 the drive to boot from, and try to read the partition
-tables and boot partition.
+tables and bootloader partition.
 It would prob only support NiceFS, as that is meant to
 be the filesystem of the boot partition, maybe FAT16
 too if ONYX would.

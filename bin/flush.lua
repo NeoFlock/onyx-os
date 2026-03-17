@@ -3,4 +3,4 @@
 local dev = ...
 if dev then dev = k.caddress(dev) end
 
-assert(k.sync(dev))
+assert(k.flush(dev))

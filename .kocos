@@ -8,6 +8,7 @@ sbin/mktmproot.lua regular 0 0 493
 sbin/mount.lua regular 0 0 493
 sbin/init regular 0 0 493
 sbin/mkramimg.lua regular 0 0 493
+dev directory 0 0 438
 bin directory 0 0 493
 bin/onit-analyze.lua regular 0 0 493
 bin/terminfo.lua regular 0 0 493
@@ -24,10 +25,12 @@ bin/mkfs.lua regular 0 0 493
 bin/opk.lua regular 0 0 493
 bin/ctype.lua regular 0 0 493
 bin/sha256sum.lua regular 0 0 493
+bin/flush.lua regular 0 0 493
 bin/ftype.lua regular 0 0 493
 bin/tunneld.lua regular 0 0 493
 bin/sleep.lua regular 0 0 493
 bin/kill.lua regular 0 0 493
+bin/mkdir.lua regular 0 0 493
 bin/random.lua regular 0 0 493
 bin/mounts.lua regular 0 0 493
 bin/whoami.lua regular 0 0 493
@@ -64,6 +67,7 @@ bin/colors.lua regular 0 0 493
 bin/clear.lua regular 0 0 493
 bin/time.lua regular 0 0 493
 bin/rmmod.lua regular 0 0 493
+bin/mknod.lua regular 0 0 493
 bin/sysinfo.lua regular 0 0 493
 bin/dmesg.lua regular 0 0 493
 bin/chboot.lua regular 0 0 493

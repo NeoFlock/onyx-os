@@ -87,7 +87,7 @@ local function managedfs(req, ...)
 
 		return state
 	end
-	if req == "FS-umount" or req == "FS-sync" then
+	if req == "FS-umount" or req == "FS-sync" or req == "FS-flush" then
 		---@type Kocos.managedfs
 		local state = ...
 		-- Flush shi
@@ -156,6 +156,48 @@ local function managedfs(req, ...)
 		else
 			return Kocos.ENOSUPPORT
 		end
+		return true
+	end
+	if req == "FS-chmod" then
+		---@type Kocos.managedfs, string, integer
+		local state, path, perms = ...
+		if state.readonly then
+			return false, Kocos.EROFS
+		end
+		if not state.frecords then
+			return false, Kocos.ENOSUPPORT
+		end
+		if not state.frecords[path] then
+			return false, Kocos.ENOSUPPORT
+		end
+		state.frecords[path].perms = perms
+		return true
+	end
+	if req == "FS-chown" then
+		---@type Kocos.managedfs, string, integer, integer
+		local state, path, uid, gid = ...
+		if state.readonly then
+			return false, Kocos.EROFS
+		end
+		if not state.frecords then
+			return false, Kocos.ENOSUPPORT
+		end
+		if not state.frecords[path] then
+			return false, Kocos.ENOSUPPORT
+		end
+		state.frecords[path].uid = uid
+		state.frecords[path].gid = gid
+		return true
+	end
+	if req == "FS-remove" then
+		---@type Kocos.managedfs, string
+		local state, path = ...
+		if state.readonly then
+			return false, Kocos.EROFS
+		end
+		local ok, err = state.dev.remove(path)
+		if not ok then return false, err end
+		state.frecords[path] = nil
 		return true
 	end
 	if req == "FS-mknod" then

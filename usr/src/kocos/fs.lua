@@ -797,17 +797,48 @@ function syscalls.mknod(path, ftype, perms, uid, gid)
 	uid = math.floor(uid)
 	gid = math.floor(gid)
 	local truepath = Kocos.realPathFor(proc, path)
-	local mnt, subpath = Kocos.resolvePath(truepath, uid, gid, Kocos.P_WRITABLE, false, true)
+	local mnt, subpath = Kocos.resolvePath(truepath, proc.uid, proc.gid, Kocos.P_WRITABLE, false, true)
 	if not mnt then return false, subpath end
+	if Kocos.existsOnMount(mnt, subpath) then return false, Kocos.EEXIST end
 	return mnt.driver("FS-mknod", mnt.state, subpath, ftype, perms, uid, gid)
 end
 
+---@param path string
+---@param uid integer
+---@param gid integer
 function syscalls.chown(path, uid, gid)
-	-- TODO: chown
+	local proc = Kocos.currentProcess()
+	local truepath = Kocos.realPathFor(proc, path)
+	local mnt, subpath = Kocos.resolvePath(truepath, proc.uid, proc.gid, Kocos.P_WRITABLE, false, false)
+	if not mnt then return false, subpath end
+	return mnt.driver("FS-chown", mnt.state, subpath, uid, gid)
 end
 
-function syscalls.chmod(path, mode)
-	 -- TODO: chmod
+---@param path string
+---@param perms integer
+function syscalls.chmod(path, perms)
+	local proc = Kocos.currentProcess()
+	local truepath = Kocos.realPathFor(proc, path)
+	local mnt, subpath = Kocos.resolvePath(truepath, proc.uid, proc.gid, Kocos.P_WRITABLE, false, false)
+	if not mnt then return false, subpath end
+	return mnt.driver("FS-chnod", mnt.state, subpath, perms)
+end
+
+---@param path string
+---@return boolean, string?
+function syscalls.remove(path)
+	local proc = Kocos.currentProcess()
+	local truepath = Kocos.realPathFor(proc, path)
+	local mnt, subpath = Kocos.resolvePath(truepath, proc.uid, proc.gid, Kocos.P_WRITABLE, false, false)
+	if not mnt then return false, subpath end
+	local stat = assert(Kocos.statMount(mnt, subpath))
+	if stat.type == "directory" then
+		-- don't call list() because that stats a lot
+		local l, err = mnt.driver("FS-list", mnt.state, subpath)
+		if err then return false, err end
+		if #l > 0 then return false, Kocos.ENOTEMPTY end
+	end
+	return mnt.driver("FS-remove", mnt.state, subpath)
 end
 
 ---@param path string
@@ -839,6 +870,21 @@ function syscalls.sync(dev)
 	end
 	return synced
 end
+
+---@param dev? string
+---@return integer?, string?
+function syscalls.flush(dev)
+	local flushed = 0
+	for _, mnt in pairs(Kocos.mounts) do
+		if mnt.device == (dev or mnt.device) and mnt.driver then
+			local ok, err = mnt.driver("FS-flush", mnt.state)
+			if not ok then return nil, err end
+			flushed = flushed + 1
+		end
+	end
+	return flushed
+end
+
 
 ---@param dev? string
 ---@return string[]?, string?
