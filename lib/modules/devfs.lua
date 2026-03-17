@@ -6,6 +6,9 @@ devfs.roPerms = 4*64
 devfs.rwPerms = 6*64
 devfs.dirPerms = 6*64 + 4*8 + 4
 
+---@type table<string, {rc: integer, chunks: string[]}>
+devfs.fdDataBuffers = {}
+
 ---@param address string
 ---@return boolean
 function devfs.isDevReadOnly(address)
@@ -120,7 +123,7 @@ end
 
 ---@type Kocos.descriptorHandler
 function devfs._blockDevHandler(handle, req, ...)
-	---@type Kocos.partdev
+	---@type Kocos.blockdev
 	local vdev = handle._vdev
 	local ss = vdev.getSectorSize()
 	local cap = vdev.getCapacity()
@@ -162,7 +165,78 @@ function devfs._blockDevHandler(handle, req, ...)
 		handle._sec = 1 + (cur / ss)
 		return cur
 	end
+	if req == "ioctl" then
+		local field = ...
+		if field == "blocksize" then return ss end
+	end
 	return Kocos.defaultDevHandler(handle, req, ...)
+end
+
+---@type Kocos.descriptorHandler
+function devfs._networkDevHandler(handle, req, ...)
+	local dev = handle.device or ""
+	local ty = component.type(dev)
+	if req == "write" then
+		---@type string
+		local data = ...
+		if ty == "modem" then
+			local port = handle._modemport or 1
+			if handle._modemtarget then
+				return component.invoke(dev, "send", handle._modemtarget, port, data)
+			else
+				return component.invoke(dev, "broadcast", port, data)
+			end
+		elseif ty == "tunnel" then
+			return component.invoke(dev, "send", data)
+		end
+		return false, Kocos.EBADDEV
+	end
+	if req == "ioctl" then
+		local method, val = ...
+		if method == "blocksize" then
+			if component.methods(dev).maxPacketSize == nil then
+				return 0
+			end
+			return component.invoke(dev, "maxPacketSize")
+		end
+		if ty == "modem" then
+			if method == "setTarget" then
+				handle._modemtarget = val
+				return handle._modemtarget
+			end
+			if method == "getTarget" then
+				return handle._modemtarget
+			end
+			if method == "targetport" then
+				handle._modemport = tonumber(val) or 1
+				return handle._modemport
+			end
+		end
+	end
+	if req == "read" then
+		local buf = devfs.fdDataBuffers[dev]
+		if not buf then return nil, Kocos.EBADF end
+		return table.remove(buf.chunks, 1) or ""
+	end
+	if req == "close" then
+		local buf = devfs.fdDataBuffers[dev]
+		if not buf then return nil, Kocos.EBADF end
+		buf.rc = buf.rc - 1
+		if buf.rc < 1 then
+			devfs.fdDataBuffers[dev] = nil
+		end
+		return true
+	end
+	return Kocos.defaultDevHandler(handle, req, ...)
+end
+
+---@param address string
+function devfs.incDataBuffer(address)
+	devfs.fdDataBuffers[address] = devfs.fdDataBuffers[address] or {
+		rc = 0,
+		chunks = {},
+	}
+	devfs.fdDataBuffers[address].rc = devfs.fdDataBuffers[address].rc + 1
 end
 
 ---@param address string
@@ -171,6 +245,19 @@ end
 function devfs.devHandle(address, mode)
 	local dev, err = component.proxy(address)
 	if not dev then return nil, err end
+	if dev.type == "modem" or dev.type == "tunnel" then
+		devfs.incDataBuffer(address)
+		---@type Kocos.descriptor
+		return {
+			type = "device",
+			state = "",
+			flags = 0,
+			pid = 0,
+			rc = 1,
+			handler = devfs._networkDevHandler,
+			device = address,
+		}
+	end
 	local vdrive = Kocos.virtualDriveFrom(dev)
 	if vdrive then
 		---@type Kocos.descriptor
@@ -307,6 +394,20 @@ return function(req, ...)
 			end
 		end
 		return nil, Kocos.ENOENT
+	end
+	if req == "EVENT" then
+		local e = {...}
+		if e[1] == "modem_message" then
+			local recv = e[2]
+			local buf = devfs.fdDataBuffers[recv]
+			if not buf then return end
+			local data = e[6]
+			if type(data) == "string" then
+				table.insert(buf.chunks, data)
+			end
+			return
+		end
+		return
 	end
 	if req == "FS-wrapdev" then
 		local addr, mode = ...
