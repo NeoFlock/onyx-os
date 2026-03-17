@@ -56,6 +56,7 @@ Kocos.PART_PINNED = 4
 ---@field type "partition"
 ---@field slot integer
 ---@field getPartitionName fun(): string
+---@field getPartitionIndex fun(): integer
 ---@field getStorageDevice fun(): string
 ---@field getPartitionFlags fun(): integer
 ---@field getPartitionType fun(): Kocos.parttype
@@ -103,12 +104,13 @@ end
 ---@param address string
 ---@param drive Kocos.blockdev
 ---@param name string
+---@param idx integer
 ---@param sectorOff integer Starts at 0
 ---@param size integer In sectors
 ---@param partType string
 ---@param partFlags integer
 ---@return string?
-function Kocos.addDrivePartition(address, drive, name, sectorOff, size, partType, partFlags)
+function Kocos.addDrivePartition(address, drive, name, idx, sectorOff, size, partType, partFlags)
 	if component.type(address) then return address end
 	return component.add {
 		address = address,
@@ -140,6 +142,9 @@ function Kocos.addDrivePartition(address, drive, name, sectorOff, size, partType
 				direct = true,
 			},
 			getPartitionName = {
+				direct = true,
+			},
+			getPartitionIndex = {
 				direct = true,
 			},
 			getStorageDevice = {
@@ -180,6 +185,9 @@ function Kocos.addDrivePartition(address, drive, name, sectorOff, size, partType
 			if method == "getPartitionName" then
 				return name
 			end
+			if method == "getPartitionIndex" then
+				return idx
+			end
 			if method == "getStorageDevice" then
 				return drive.address
 			end
@@ -197,11 +205,20 @@ function Kocos.addDrivePartition(address, drive, name, sectorOff, size, partType
 	}
 end
 
-function Kocos.refetchPartitions()
+---@param dev? string
+---@return boolean, string?
+function Kocos.refetchPartitions(dev)
+	if dev then
+		local p = component.proxy(dev)
+		if not p then return false, Kocos.ENODEV end
+		local parts, err = Kocos.getpartof(p)
+		return parts ~= nil, err
+	end
 	for dev in component.list() do
 		local p = component.proxy(dev)
 		if p and p.type ~= "partition" then Kocos.getpartof(p) end
 	end
+	return true
 end
 
 ---@param path string
@@ -270,6 +287,67 @@ end
 ---@param ftype Kocos.filetype
 function Kocos.validFileType(ftype)
 	return ftype == "regular" or ftype == "directory" or ftype == "symlink" or ftype == "fifo"
+end
+
+---@type Kocos.descriptorHandler
+function Kocos.defaultDevHandler(handle, req, ...)
+	---@type string
+	local dev = assert(handle.device)
+
+	if req == "ioctl" then
+		if not component.type(dev) then return nil, Kocos.ENODEV end
+		local method = ...
+
+		-- Generic component stuff
+		if method == "address" then
+			return dev
+		end
+		if method == "type" then
+			return component.type(dev)
+		end
+		if method == "slot" then
+			return component.slot(dev)
+		end
+		if method == "methods" then
+			return component.methods(dev)
+		end
+		if method == "fields" then
+			return component.fields(dev)
+		end
+
+		if method == "repartition" then
+			return Kocos.refetchPartitions(dev)
+		end
+
+		-- fallback: invoke
+		return component.invoke(dev, ...)
+	end
+	return nil, Kocos.EBADF
+end
+
+---@param device string
+---@param mode "w"|"r"|"a"
+---@return Kocos.descriptor?, string?
+function Kocos.wrapDeviceAsFile(device, mode)
+	if not component.type(device) then return nil, Kocos.ENODEV end
+
+	for _, mod in pairs(Kocos.mods) do
+		local desc, err = mod("FS-wrapdev", device, mode)
+		if desc or err then
+			return desc, err
+		end
+	end
+
+	---@type Kocos.descriptor
+	return {
+		type = "device",
+		state = "",
+		flags = 0,
+		handler = Kocos.defaultDevHandler,
+		pid = 0,
+		rc = 1,
+		device = device,
+	}
 end
 
 ---@class Kocos.fstat
@@ -608,6 +686,15 @@ function syscalls.open(path, mode)
 		setmetatable(handle, nil)
 		proc.fds[availableFd] = handle
 		return availableFd
+	elseif stat.type == "device" then
+		-- Filesystem shi
+		---@type Kocos.descriptor?, string?
+		local handle, err = Kocos.wrapDeviceAsFile(stat.deviceAddress, mode)
+		if not handle then return nil, err or Kocos.EHWPOISON end
+		-- prevents buggy behavior
+		setmetatable(handle, nil)
+		proc.fds[availableFd] = handle
+		return availableFd
 	elseif stat.type == "fifo" then
 		local state = Kocos.volatileFileStates[truepath]
 		---@cast state Kocos.vfifostate
@@ -776,6 +863,35 @@ function syscalls.exists(path, traverse)
 end
 
 ---@param path string
+---@param device string
+---@param perms? integer
+---@param uid? integer
+---@param gid? integer
+---@return boolean, string?
+function syscalls.mkdev(path, device, perms, uid, gid)
+	local proc = Kocos.currentProcess()
+	if proc.uid ~= 0 then
+		return false, Kocos.EACCESS
+	end
+	perms = perms or Kocos.P_DEFAULT
+	uid = uid or proc.uid
+	gid = gid or proc.gid
+	if type(path) ~= "string" then return false, Kocos.EINVAL end
+	if type(device) ~= "string" then return false, Kocos.EINVAL end
+	if type(perms) ~= "number" then return false, Kocos.EINVAL end
+	if type(uid) ~= "number" then return false, Kocos.EINVAL end
+	if type(gid) ~= "number" then return false, Kocos.EINVAL end
+	perms = math.floor(perms) % 512
+	uid = math.floor(uid)
+	gid = math.floor(gid)
+	local truepath = Kocos.realPathFor(proc, path)
+	local mnt, subpath = Kocos.resolvePath(truepath, proc.uid, proc.gid, Kocos.P_WRITABLE, false, true)
+	if not mnt then return false, subpath end
+	if Kocos.existsOnMount(mnt, subpath) then return false, Kocos.EEXIST end
+	return mnt.driver("FS-mkdev", mnt.state, subpath, device, perms, uid, gid)
+end
+
+---@param path string
 ---@param ftype? Kocos.filetype
 ---@param perms? integer
 ---@param uid? integer
@@ -790,6 +906,8 @@ function syscalls.mknod(path, ftype, perms, uid, gid)
 	if type(path) ~= "string" then return false, Kocos.EINVAL end
 	if type(ftype) ~= "string" then return false, Kocos.EINVAL end
 	if not Kocos.validFileType(ftype) then return false, Kocos.EINVAL end
+	if ftype == "symlink" then return false, Kocos.ENOSUPPORT end
+	if ftype == "device" then return false, Kocos.ENOSUPPORT end
 	if type(perms) ~= "number" then return false, Kocos.EINVAL end
 	if type(uid) ~= "number" then return false, Kocos.EINVAL end
 	if type(gid) ~= "number" then return false, Kocos.EINVAL end
@@ -859,7 +977,7 @@ end
 ---@param dev? string
 ---@return integer?, string?
 function syscalls.sync(dev)
-	Kocos.refetchPartitions()
+	Kocos.refetchPartitions(dev)
 	local synced = 0
 	for _, mnt in pairs(Kocos.mounts) do
 		if mnt.device == (dev or mnt.device) and mnt.driver then

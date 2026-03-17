@@ -21,6 +21,21 @@ function io.open(filename, mode)
 	return io.wrap(fd, mode == "r", textmode), nil
 end
 
+-- It will try to complete shortforms
+-- as well as resolve device files
+---@param deviceArg string
+---@param filter? string
+---@param exact? boolean
+---@return string?, string?
+function io.todevice(deviceArg, filter, exact)
+	local stat = k.stat(deviceArg)
+	if stat then
+		if stat.type == "device" then return stat.deviceAddress end
+		return nil, "not a device"
+	end
+	return k.caddress(deviceArg, filter, exact) or deviceArg
+end
+
 ---@param path string
 ---@return boolean, string?
 function io.mkdir(path)

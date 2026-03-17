@@ -12,7 +12,7 @@ data = luamin(data) .. "\0"
 
 ---@type Kocos.partdev?
 local bootPart
-local bootAddr = k.caddress(forDev) or k.sysinfo().bootAddress
+local bootAddr = io.todevice(forDev) or k.sysinfo().bootAddress
 
 for addr in k.clist("partition", true) do
 	---@type Kocos.partdev

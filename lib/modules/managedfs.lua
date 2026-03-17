@@ -200,6 +200,39 @@ local function managedfs(req, ...)
 		state.frecords[path] = nil
 		return true
 	end
+	if req == "FS-mkdev" then
+		---@type Kocos.managedfs, string, string, integer, integer, integer
+		local state, path, device, perms, uid, gid = ...
+
+		if not state.frecords then
+			return false, Kocos.ENOSUPPORT
+		end
+
+		if path == metadata then
+			return false, Kocos.EPERM
+		end
+
+		if state.readonly then
+			return false, Kocos.EROFS
+		end
+
+		local fd, err = state.dev.open(path, "w")
+		if not fd then return false, err end
+
+		local ok, err = state.dev.write(fd, device)
+		state.dev.close(fd)
+		if ok then
+			state.frecords[path] = {
+				ftype = "device",
+				perms = perms,
+				uid = uid,
+				gid = gid,
+			}
+		else
+			state.dev.remove(path)
+		end
+		return ok, err
+	end
 	if req == "FS-mknod" then
 		---@type Kocos.managedfs, string, Kocos.filetype, integer, integer, integer
 		local state, path, ftype, perms, uid, gid = ...
@@ -281,10 +314,18 @@ local function managedfs(req, ...)
 			stat.perms = stat.type == "directory" and Kocos.P_ALL or Kocos.P_DEFAULT
 		end
 
-		if path == "" then
-			-- don't care
-			stat.perms = 511
-			stat.type = "directory"
+		if stat.type == "device" then
+			-- we need to specify the correct device address!
+			-- this is in deviceAddress
+			local fd, err = state.dev.open(path, "r")
+			if not fd then return nil, err end
+
+			stat.deviceAddress = ""
+			repeat
+				local c = state.dev.read(fd, math.huge)
+				stat.deviceAddress = stat.deviceAddress .. (c or "")
+			until c == nil
+			state.dev.close(fd)
 		end
 
 		if path == metadata then

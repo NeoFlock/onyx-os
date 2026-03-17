@@ -1,5 +1,8 @@
 --!lua
 
 local rootAddr = ...
+assert(rootAddr, "no device specified")
+rootAddr = assert(io.todevice(rootAddr))
 
-print(assert(k.chsysroot(assert(k.caddress(rootAddr)))))
+assert(k.umount("/"))
+assert(k.mount("/", rootAddr))

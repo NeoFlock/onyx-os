@@ -1,6 +1,6 @@
 --!lua
 
 local dev = ...
-if dev then dev = k.caddress(dev) end
+if dev then dev = io.todevice(dev) end
 
 assert(k.flush(dev))

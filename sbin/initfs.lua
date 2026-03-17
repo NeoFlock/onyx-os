@@ -68,7 +68,10 @@ local function ensureBasicDirs()
 	for _, f in ipairs(ensureExists) do
 		if not k.exists(f) then
 			log("DEBUG", "initfs: creating %s with default permissions", f)
-			assert(k.mknod(f, "directory"))
+			local _, err = k.mknod(f, "directory")
+			if err then
+				log("ERROR", "initfs: %s", err)
+			end
 		end
 	end
 end
@@ -90,15 +93,18 @@ for _, line in ipairs(fstab) do
 		local path = parts[2]
 		dev = vars[dev] or dev
 		local cmdline = table.concat(parts, " ", 3)
+		log("DEBUG", "initfs: mounting device %s to %s", dev, path)
 		if k.isMount(path) then
 			log("WARN", "initfs: %s already mounted", path)
 			if path == "/" then
 				ensureBasicDirs()
 			end
 		elseif k.ctype(dev) then
-			assert(k.mount(path, dev, cmdline))
-			if path == "/" then
+			local ok, err = k.mount(path, dev, cmdline)
+			if ok and path == "/" then
 				ensureBasicDirs()
+			elseif err then
+				log("ERROR", "initfs: %s", err)
 			end
 		else
 			log("WARN", "initfs: missing device %s for %s", dev, path)

@@ -7,4 +7,4 @@ if filter then
 	if exact then filter = filter:sub(2) end
 end
 addr = assert(io.todevice(addr, filter, exact))
-print(k.ctype(addr))
+print(k.cslot(addr))

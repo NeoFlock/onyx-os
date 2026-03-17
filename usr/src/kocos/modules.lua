@@ -89,3 +89,9 @@ function syscalls.dkms_unload(mod)
 	Kocos.removeModule(mod)
 	return true
 end
+
+---@param module string
+---@param sig string
+function syscalls.invokeModule(module, sig, ...)
+	return Kocos.mods[module]("dkms_invoke", sig, ...)
+end

@@ -118,6 +118,7 @@ do
 	end
 
 	---@param address string
+	---@return table<string, boolean>
 	function component.methods(address)
 		checkArg(1, address, "string")
 		local v = vComponents[address]
@@ -134,6 +135,7 @@ do
 	end
 
 	---@param address string
+	---@return table<string, {getter: boolean, setter: boolean}>
 	function component.fields(address)
 		checkArg(1, address, "string")
 		local v = vComponents[address]
@@ -242,7 +244,7 @@ setmetatable(component, {__index = function(t, key)
 end})
 
 ---@param type string
----@return Kocos.device?
+---@return Kocos.dev?
 function component.getPrimary(type)
 	if primCache[type] then return primCache[type] end
 

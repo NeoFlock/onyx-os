@@ -542,7 +542,7 @@ function vtty:putc(c)
 		self.x = 1
 	elseif c == "\t" then
 		self:flush()
-		self.x = self.x + 4
+		self.x = math.align(self.x + 1, 8)
 	elseif c == "\a" then
 		self:flush()
 		-- TODO: beep

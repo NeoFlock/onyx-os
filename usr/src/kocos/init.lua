@@ -272,6 +272,15 @@ function syscalls.sysinfo()
 	}
 end
 
+---@param addr? string
+---@return string
+function syscalls.chboot(addr)
+	if addr then
+		computer.setBootAddress(addr)
+	end
+	return computer.getBootAddress()
+end
+
 ---@param hostname? string
 ---@return string?, string?
 function syscalls.hostname(hostname)
@@ -313,6 +322,7 @@ Kocos.O_CLOEXEC = 2
 ---@field evbuf? table[]
 ---@field listener? Kocos.fileListener
 ---@field addrinfo? Kocos.addrinfo
+---@field device? string
 
 Kocos.MAX_HEVBUF = Kocos.getCmdlineNum("MAX_HEVBUF", 8)
 

@@ -7,4 +7,4 @@ if not bootAddr then
 	return
 end
 
-print(assert(k.chboot(assert(k.caddress(bootAddr)))))
+print(assert(k.chboot(assert(io.todevice(bootAddr)))))

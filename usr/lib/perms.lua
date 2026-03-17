@@ -16,9 +16,9 @@ perms.OWNER_MASK = 7 << perms.OWNER
 function perms.to3BitString(p)
 	---@type string[]
 	local t = {}
-	t[1] = (p & perms.R) and "r" or "-"
-	t[2] = (p & perms.W) and "w" or "-"
-	t[3] = (p & perms.X) and "x" or "-"
+	t[1] = (p & perms.R ~= 0) and "r" or "-"
+	t[2] = (p & perms.W ~= 0) and "w" or "-"
+	t[3] = (p & perms.X ~= 0) and "x" or "-"
 	return table.concat(t)
 end
 

@@ -69,7 +69,9 @@ end
 
 ---@return boolean, string?
 function buffer:write(...)
-	local data = table.concat({...})
+	local t = {...}
+	for i=1,select("#", ...) do t[i] = tostring(t[i]) end
+	local data = table.concat(t)
 	if self.readonly then return false, "read-only buffer" end
 	if self.bufmode == "no" then
 		return self.stream:write(data)

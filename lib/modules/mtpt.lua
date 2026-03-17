@@ -18,6 +18,7 @@ return function(req, ...)
 		if lastSector:sub(21, 24) ~= "mtpt" then return end
 		local partsInSector = math.floor(sectorSize / 32)
 		local parts = {}
+		local idx = 0
 		for i=2,partsInSector do
 			local off = (i - 1) * 32
 			local chunk = lastSector:sub(off+1, off+32)
@@ -26,8 +27,9 @@ return function(req, ...)
 			local start = string.tonumBE(chunk:sub(25, 28))
 			local len = string.tonumBE(chunk:sub(29, 32))
 			if name ~= "" then
+				idx = idx + 1
 				local addr = "P" .. i .. "-" .. drive.address
-				Kocos.addDrivePartition(addr, drive, name, start - 1, len, type, false)
+				Kocos.addDrivePartition(addr, drive, name, idx, start - 1, len, type, 0)
 				table.insert(parts, addr)
 			end
 		end

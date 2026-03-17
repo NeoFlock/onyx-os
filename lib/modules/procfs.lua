@@ -90,6 +90,7 @@ return function(req, ...)
 				inode = 0,
 				lastModified = 0,
 				perms = readonlyPerms,
+				linkCount = 1,
 			}
 		end
 		for p, _ in pairs(rootFiles) do
@@ -107,6 +108,7 @@ return function(req, ...)
 					inode = 0,
 					lastModified = 0,
 					perms = readonlyPerms,
+					linkCount = 1,
 				}
 			end
 		end

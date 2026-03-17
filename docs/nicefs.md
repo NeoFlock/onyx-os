@@ -17,8 +17,7 @@ Integers are stored in **big-endian**, for simplicity when decoding in Lua 5.2 u
 Null blocks are at a mythical sector `0`.
 Sector indexes are stored as 16-bit unsigned integers.
 They're offset by 2, so sector index `1` means sector `3`.
-With 512 byte sectors, taking into account sector index 0 referring to the superblock,
-it leads to supporting roughly 32MiB of storage maximum.
+With 512 byte sectors, it leads to supporting roughly 32MiB of storage maximum.
 
 The data structures are defined as the following C types:
 ```c
