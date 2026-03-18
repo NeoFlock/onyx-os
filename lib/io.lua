@@ -28,12 +28,15 @@ end
 ---@param exact? boolean
 ---@return string?, string?
 function io.todevice(deviceArg, filter, exact)
+	if k.ctype(deviceArg) then return deviceArg end
+	local mounted = k.caddress(deviceArg, filter, exact)
+	if mounted then return mounted end
 	local stat = k.stat(deviceArg)
 	if stat then
 		if stat.type == "device" then return stat.deviceAddress end
 		return nil, "not a device"
 	end
-	return k.caddress(deviceArg, filter, exact) or deviceArg
+	return deviceArg
 end
 
 ---@param path string

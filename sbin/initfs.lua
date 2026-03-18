@@ -92,6 +92,7 @@ for _, line in ipairs(fstab) do
 		local dev = parts[1]
 		local path = parts[2]
 		dev = vars[dev] or dev
+		dev = assert(io.todevice(dev))
 		local cmdline = table.concat(parts, " ", 3)
 		log("DEBUG", "initfs: mounting device %s to %s", dev, path)
 		if k.isMount(path) then
