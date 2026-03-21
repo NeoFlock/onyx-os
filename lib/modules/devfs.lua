@@ -173,6 +173,43 @@ function devfs._blockDevHandler(handle, req, ...)
 end
 
 ---@type Kocos.descriptorHandler
+function devfs._charDevHandler(handle, req, ...)
+	---@type "null"|"zero"|"random"|"hex"
+	local dev = assert(handle.device)
+	if req == "read" then
+		---@type integer
+		local len = ...
+		if len > 8192 then len = 8192 end
+		if dev == "null" then return end
+		if dev == "zero" then return string.rep('\0', len) end
+		if dev == "hex" then
+			local t = {}
+			local alpha = "123456789abcdef"
+			for i=1,len do
+				local j = math.random(#alpha)
+				t[i] = alpha:sub(j,j)
+			end
+			return table.concat(t)
+		end
+		if dev == "random" then
+			local t = {}
+			for i=1,len do
+				t[i] = math.random(0, 255)
+			end
+			return string.char(table.unpack(t, 1, len))
+		end
+		return nil, Kocos.EBADF
+	end
+	if req == "write" then
+		---@type string
+		local data = ...
+		if dev == "null" then return true end
+		if dev == "zero" then return true end
+		return nil, Kocos.EBADF
+	end
+end
+
+---@type Kocos.descriptorHandler
 function devfs._networkDevHandler(handle, req, ...)
 	local dev = handle.device or ""
 	local ty = component.type(dev)
@@ -305,7 +342,7 @@ return function(req, ...)
 		local _, path = ...
 
 		if path == "" then
-			local t = {"primaries/", "components/", "ttys/"}
+			local t = {"primaries/", "components/", "null", "zero", "random", "hex", "ttys/"}
 			for addr in component.list() do
 				local n = devfs.filenameFor(addr)
 				if n then table.insert(t, n) end
@@ -342,6 +379,23 @@ return function(req, ...)
 
 		return nil, Kocos.ENOTDIR
 	end
+	if req == "FS-open" then
+		---@type _, string
+		local _, path = ...
+		if path == "null" or path == "zero" or path == "random" or path == "hex" then
+			---@type Kocos.descriptor
+			return {
+				type = "file",
+				state = "",
+				flags = 0,
+				rc = 1,
+				pid = 0,
+				handler = devfs._charDevHandler,
+				device = path,
+			}
+		end
+		return nil, Kocos.EISDIR
+	end
 	if req == "FS-stat" then
 		---@type _, string
 		local _, path = ...
@@ -376,6 +430,23 @@ return function(req, ...)
 				inode = 0,
 				lastModified = 0,
 				perms = devfs.dirPerms,
+				linkCount = 1,
+			}
+		end
+		if path == "null" or path == "zero" or path == "random" or path == "hex" then
+			---@type Kocos.fstat
+			return {
+				type = "regular",
+				deviceAddress = devfs.addr,
+				diskSize = 0,
+				size = 0,
+				diskUsed = 0,
+				diskTotal = 0,
+				uid = 0,
+				gid = 0,
+				inode = 0,
+				lastModified = 0,
+				perms = devfs.rwPerms,
 				linkCount = 1,
 			}
 		end
