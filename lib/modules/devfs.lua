@@ -305,7 +305,7 @@ return function(req, ...)
 		local _, path = ...
 
 		if path == "" then
-			local t = {"primaries/", "components/"}
+			local t = {"primaries/", "components/", "ttys/"}
 			for addr in component.list() do
 				local n = devfs.filenameFor(addr)
 				if n then table.insert(t, n) end
@@ -331,6 +331,14 @@ return function(req, ...)
 			end
 			return f
 		end
+		if path == "ttys" then
+			local t = {}
+			for name in pairs(Kocos.namedTerminals) do
+				table.insert(t, "master-" .. name)
+				table.insert(t, "slave-" .. name)
+			end
+			return t
+		end
 
 		return nil, Kocos.ENOTDIR
 	end
@@ -354,7 +362,7 @@ return function(req, ...)
 				linkCount = 1,
 			}
 		end
-		if path == "components" or path == "primaries" then
+		if path == "components" or path == "primaries" or path == "ttys" then
 			---@type Kocos.fstat
 			return {
 				type = "directory",
@@ -392,6 +400,30 @@ return function(req, ...)
 			if path == devfs.filenameFor(addr) then
 				return devfs.statDev(addr)
 			end
+		end
+		local ttyPref = "ttys/"
+		if string.startswith(path, ttyPref) then
+			local ty = string.sub(path, #ttyPref+1)
+			for name, term in pairs(Kocos.namedTerminals) do
+				if ty == ("master-" .. name) or ty == ("slave-" .. name) then
+					---@type Kocos.fstat
+					return {
+						type = "regular",
+						deviceAddress = devfs.addr,
+						diskSize = 0,
+						diskUsed = 0,
+						diskTotal = 0,
+						size = 0,
+						uid = term.uid,
+						gid = term.gid,
+						perms = 6*64 + 6*8,
+						inode = -1,
+						lastModified = 0,
+						linkCount = 1,
+					}
+				end
+			end
+			return nil, Kocos.ENOENT
 		end
 		return nil, Kocos.ENOENT
 	end

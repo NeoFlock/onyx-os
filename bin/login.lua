@@ -97,8 +97,10 @@ local function setupScreen(screen)
 	if c then
 		ttyNum = ttyNum + 1
 		term:write(string.format("tty #%d (pid %d)\n", ttyNum, c))
+		k.invokeDaemon("initd", "log", "INFO", "login " .. screen .. ": new login with pid " .. c)
 	else
 		term:write("Error: " .. err .. "\n")
+		k.invokeDaemon("initd", "log", "ERROR", "login " .. screen .. ": " .. err)
 	end
 end
 

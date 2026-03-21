@@ -1,5 +1,8 @@
 # For the kernel
-- Unmount automatically when device is removed
+- ERASE the pid field from file descriptors and bound modules
+- make syscalls based on yielding and request/response
+- make TTYs work based off master/slave system (openpty is already implemented)
+- Add stats to track how much is written to/read from devices
 - Support the basic fs operations missing (`rename`, `symlink`, `link`)
 - Add some kind of inotify-like system
 - (maybe) some way to reload the entire kernel

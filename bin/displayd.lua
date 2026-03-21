@@ -32,7 +32,7 @@ end
 ---@param addr string
 function utils.switchToScreen(addr)
 	local gpu = utils.getGPU()
-	if gpu.getScreen() ~= addr or gpu.getActiveBuffer() ~= 0 then
+	if gpu.getScreen() ~= addr or (gpu.getActiveBuffer() or 0) ~= 0 then
 		local screen = screens[addr]
 		gpu.bind(addr)
 		gpu.setActiveBuffer(0)

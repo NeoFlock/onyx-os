@@ -690,8 +690,6 @@ function vtty:terminfo()
 			"gpu",
 			"vrambuf",
 		},
-		columns = self.w,
-		lines = self.h,
 	}
 end
 

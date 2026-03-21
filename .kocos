@@ -98,6 +98,7 @@ bin/strace.lua regular 0 0 493
 bin/mkfs.nicefs.lua regular 0 0 493
 bin/chboot.lua regular 0 0 493
 bin/stat.lua regular 0 0 493
+bin/lsprim.lua regular 0 0 493
 bin/syscalls.lua regular 0 0 493
 bin/mkdev.lua regular 0 0 493
 bin/devpath.lua regular 0 0 493

@@ -321,34 +321,37 @@ function syscalls.cremove(address)
 	return true
 end
 
----@param image Kocos.ramfs.node
----@param label string?
----@param readonly boolean
----@param addr string?
----@return string?, string?
-function syscalls.cramfs(image, label, readonly, addr)
-	if Kocos.currentProcess().uid ~= 0 then
-		return nil, Kocos.EACCESS
-	end
-	return nil, Kocos.ENOIMPL
-end
-
 function syscalls.cmethods(addr)
 	return component.methods(addr)
 end
 
 function syscalls.cinvoke(addr, method, ...)
+	if Kocos.currentProcess().uid ~= 0 then
+		return nil, Kocos.EACCESS
+	end
 	return component.invoke(addr, method, ...)
 end
 
----@return Kocos.dev?
+---@return Kocos.dev?, string?
 function syscalls.cproxy(addr)
+	if Kocos.currentProcess().uid ~= 0 then
+		return nil, Kocos.EACCESS
+	end
 	return component.proxy(addr)
 end
 
----@return Kocos.dev?
+---@return Kocos.dev?, string?
 function syscalls.cprimary(type)
+	if Kocos.currentProcess().uid ~= 0 then
+		return nil, Kocos.EACCESS
+	end
 	return component.getPrimary(type)
+end
+---@return string?, string?
+function syscalls.cprimaryaddr(type)
+	local prim = component.getPrimary(type)
+	if not prim then return nil, Kocos.ENODEV end
+	return prim.address
 end
 
 function syscalls.cfields(addr)

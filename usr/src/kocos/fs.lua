@@ -1078,6 +1078,146 @@ function syscalls.opentty(handler, flags)
 	return avail
 end
 
+---@class Kocos.terminfo
+---@field fgpid? integer
+---@field termname string
+---@field hw string[]
+---@field hw_features string[]
+---@field term_features string[]
+
+---@class Kocos.terminalState
+---@field id? string
+---@field termOut string
+---@field termIn string
+---@field terminfo Kocos.terminfo
+---@field uid integer
+---@field gid integer
+
+---@type table<string, Kocos.terminalState>
+Kocos.namedTerminals = {}
+
+---@type Kocos.descriptorHandler
+function Kocos._ptyHandler(handle, req, ...)
+	---@type Kocos.terminalState, boolean
+	local state, isMaster = handle._state, handle._isMaster
+
+	if req == "close" then
+		return true
+	elseif req == "write" then
+		---@type string
+		local data = ...
+		if isMaster then
+			state.termIn = state.termIn .. data
+		else
+			state.termOut = state.termOut .. data
+		end
+		return true
+	elseif req == "read" then
+		---@type integer 
+		local read = ...
+		local buf = isMaster and state.termOut or state.termIn
+		if read > #buf then read = #buf end
+		local chunk = buf:sub(1, read)
+		buf = buf:sub(read+1)
+
+		if isMaster then
+			state.termOut = buf
+		else
+			state.termIn = buf
+		end
+		return chunk
+	elseif req == "ioctl" then
+		---@type string
+		local action, val = ...
+
+		if action == "setfgpid" then
+			state.terminfo.fgpid = tonumber(val)
+			return true
+		elseif action == "terminfo" then
+			return table.copy(state.terminfo)
+		elseif action == "set-terminfo" and isMaster then
+			state.terminfo = table.copy(val)
+			return true
+		elseif action == "interrupt" and isMaster then
+			local proc = Kocos.processes[state.terminfo.fgpid]
+			if proc then
+				Kocos.sendSignal(proc, "SIGINT")
+			end
+			return true
+		end
+	end
+	return nil, Kocos.EBADF
+end
+
+---@param terminfo? Kocos.terminfo
+---@param id? string
+---@return {master: integer, slave: integer}?, string?
+function syscalls.openpty(terminfo, id)
+	terminfo = terminfo or {
+		fgpid = nil,
+		termname = "Unknown pseudo-terminal",
+		hw = {},
+		hw_features = {},
+		term_features = {},
+	}
+
+	local proc = Kocos.currentProcess()
+
+	---@type Kocos.terminalState
+	local state = {
+		refc = 2,
+		id = id,
+		termOut = "",
+		termIn = "",
+		terminfo = table.copy(terminfo),
+		uid = proc.uid,
+		gid = proc.gid,
+	}
+	if id then Kocos.namedTerminals[id] = state end
+
+	---@type Kocos.descriptor, Kocos.descriptor
+	local master, slave = {
+		type = "tty",
+		state = "",
+		flags = 0,
+		handler = Kocos._ptyHandler,
+		pid = 0,
+		rc = 1,
+		_state = state,
+		_isMaster = true,
+	}, {
+		type = "tty",
+		state = "",
+		flags = 0,
+		handler = Kocos._ptyHandler,
+		pid = 0,
+		rc = 1,
+		_state = state,
+		_isMaster = false,
+	}
+
+	local masterFd = Kocos.availableDescriptorFor(proc)
+	proc.fds[masterFd] = master
+	local slaveFd = Kocos.availableDescriptorFor(proc)
+	proc.fds[slaveFd] = slave
+	return {master = masterFd, slave = slaveFd}
+end
+
+---@param id string
+---@return boolean, string?
+function syscalls.closepty(id)
+	local term = Kocos.namedTerminals[id]
+	if not term then return false, Kocos.ENODEV end
+
+	local proc = Kocos.currentProcess()
+	if not Kocos.permCheck(6*64 + 6*8, Kocos.P_WRITABLE, proc.uid == term.uid, proc.gid == term.gid) then
+		return false, Kocos.EACCESS
+	end
+
+	Kocos.namedTerminals[id] = nil
+	return true
+end
+
 ---@param interval number
 ---@param func function
 ---@param times integer
