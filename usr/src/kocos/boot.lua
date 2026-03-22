@@ -53,7 +53,16 @@ assert(syscalls.fork(function()
 end))
 
 Kocos.printk(Kocos.L_INFO, "Running event loop...")
+local lastCompReset = computer.uptime()
 while true do
+	do
+		local now = computer.uptime()
+		if now - lastCompReset >= 1 then
+			lastCompReset = now
+			Kocos.componentUsage = table.copy(Kocos.nextCompUsage)
+			Kocos.nextCompUsage = {}
+		end
+	end
 	Kocos.tickProcesses()
 	if Kocos.shutdown == "halt" then
 		break

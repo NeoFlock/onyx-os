@@ -74,6 +74,7 @@ return function(req, ...)
 			flags = 0,
 			rc = 1,
 			_netTy = proto,
+			device = component.internet.address,
 		}
 	end
 	if req == "EVENT" then

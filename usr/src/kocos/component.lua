@@ -261,6 +261,29 @@ end
 
 Kocos.listen(component._defaultHandler)
 
+---@class Kocos.compusage
+---@field read integer Bytes read via descriptors
+---@field write integer Bytes written via descriptors
+---@field ioctl integer Ioctl operations
+
+---@type table<string, Kocos.compusage>
+Kocos.componentUsage = {}
+---@type table<string, Kocos.compusage>
+Kocos.nextCompUsage = {}
+
+---@param address? string
+---@param field "read"|"write"|"ioctl"
+---@param amount? integer
+function Kocos.reportComponentUsage(address, field, amount)
+	if not address then return end
+	if not component.type(address) then return end
+	amount = amount or 1
+
+	Kocos.nextCompUsage[address] = Kocos.nextCompUsage[address] or {read = 0, write = 0, ioctl = 0}
+	local usage = Kocos.nextCompUsage[address]
+	usage[field] = usage[field] + amount
+end
+
 ---@param filter? string
 ---@param exact? boolean
 function syscalls.clist(filter, exact)

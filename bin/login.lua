@@ -14,7 +14,7 @@ if k.isatty(3) then
 	return 0
 end
 
----@type table<string, vtty>
+---@type table<string, {tty: vtty, master: integer}>
 local screenTerms = {}
 
 local ttyNum = 0
@@ -63,34 +63,40 @@ local function setupScreen(screen)
 		totalMemory = function()
 			return k.invokeDaemon("displayd", "totalMemory")
 		end,
+		allocateBuffer = function(w, h)
+			return k.invokeDaemon("displayd", "allocateBuffer", w, h)
+		end,
+		freeBuffer = function(buf)
+			return k.invokeDaemon("displayd", "freeBuffer", buf)
+		end,
+		freeAllBuffers = function()
+			return k.invokeDaemon("displayd", "freeAllBuffers")
+		end,
+		getActiveBuffer = function()
+			return k.invokeDaemon("displayd", "getActiveBuffer")
+		end,
+		setActiveBuffer = function(buf)
+			return k.invokeDaemon("displayd", "setActiveBuffer", buf)
+		end,
+		bitblt = function (dst, col, row, w, h, src, fromCol, fromRow)
+			return k.invokeDaemon("displayd", "bitblt", dst, col, row, w, h, src, fromCol, fromRow)
+		end,
+		csiFallback = function() end,
+		oscFallback = function() end,
 	}
 
 	local w, h = controller.maxResolution()
 
 	local term = vtty.create(controller, w, h, "login-term")
-	screenTerms[screen] = term
 	term:initController()
 	term.hw[1] = screen
 
+	local pair = assert(k.openpty(term:terminfo()))
+	screenTerms[screen] = {tty = term, master = pair.master}
+
 	local c, err = k.fork(function()
-		local stdin = k.opentty(function(req, ...)
-			if req == "write" then
-				term:write((...))
-				return true
-			end
-			if req == "read" then
-				return term:read((...))
-			end
-			if req == "ioctl" then
-				return term:ioctl(...)
-			end
-			return nil, errnos.EBADF
-		end)
-		assert(stdin == 0)
-		k.dup2(stdin, 1)
-		k.dup2(stdin, 2)
-		k.dup2(stdin, 3)
-		term:enableBlink()
+		k.close(pair.master)
+		assert(k.switchpty(pair.slave))
 		assert(k.exec("/bin/prompt.lua"))
 	end)
 
@@ -117,7 +123,7 @@ k.signal("SIGKEYDOWN", function(kb, char, code)
 		if table.contains(keyboards, kb) then
 			local term = screenTerms[screen]
 			if term then
-				term:putEvent("key_down", kb, char, code)
+				term.tty:putEvent("key_down", kb, char, code)
 			end
 			return
 		end
@@ -130,7 +136,7 @@ k.signal("SIGKEYUP", function(kb, char, code)
 		if table.contains(keyboards, kb) then
 			local term = screenTerms[screen]
 			if term then
-				term:putEvent("key_up", kb, char, code)
+				term.tty:putEvent("key_up", kb, char, code)
 			end
 			return
 		end
@@ -143,7 +149,7 @@ k.signal("SIGKEYPASTE", function(kb, code)
 		if table.contains(keyboards, kb) then
 			local term = screenTerms[screen]
 			if term then
-				term:putEvent("clipboard", kb, code)
+				term.tty:putEvent("clipboard", kb, code)
 			end
 			return
 		end
@@ -153,5 +159,12 @@ end)
 local screens = getScreens()
 for _, screen in ipairs(screens) do setupScreen(screen) end
 
-k.kill(k.getpid(), "SIGSTOP")
-coroutine.yield()
+while true do
+	for _, term in pairs(screenTerms) do
+		--term.tty:processBlink()
+		local data = assert(k.read(term.master, math.huge))
+		term.tty:write(data)
+		assert(k.write(term.master, term.tty:read(math.huge)))
+	end
+	coroutine.yield()
+end

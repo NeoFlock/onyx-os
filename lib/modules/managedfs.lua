@@ -139,6 +139,7 @@ local function managedfs(req, ...)
 			_dev = state.dev,
 			_fd = fd,
 			_mode = mode,
+			device = state.dev.address,
 		}
 	end
 	if req == "FS-touch" then

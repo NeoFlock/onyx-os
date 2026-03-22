@@ -18,9 +18,8 @@ terminal.STDOUT = 1
 terminal.STDERR = 2
 terminal.STDTERM = 3
 
---- TODO: terminfo type info
-
 ----@param fd integer
+---@return Kocos.terminfo?, string?
 function terminal.fterminfo(fd)
 	return k.ioctl(fd, "terminfo")
 end

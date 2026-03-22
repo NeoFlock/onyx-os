@@ -26,6 +26,13 @@ local rootFiles = {
 	meminfo = function()
 		return string.format("Free: %d\nTotal: %d\n", computer.freeMemory(), computer.totalMemory())
 	end,
+	compusage = function()
+		local lines = {"COMPONENT READ WRITE IOCTL"}
+		for comp, info in pairs(Kocos.componentUsage) do
+			table.insert(lines, string.format("%s %d %d %d", comp, info.read, info.write, info.ioctl))
+		end
+		return table.concat(lines, "\n") .. "\n"
+	end,
 }
 
 ---@param req string

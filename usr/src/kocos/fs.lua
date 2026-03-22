@@ -757,7 +757,11 @@ function syscalls.write(fd, data)
 	local proc = Kocos.currentProcess()
 	local f = proc.fds[fd]
 	if not f then return false, Kocos.EBADF end
-	return Kocos.handleDescriptorRequest(f, "write", data)
+	local ok, err = Kocos.handleDescriptorRequest(f, "write", data)
+	if ok then
+		Kocos.reportComponentUsage(f.device, "write", #data)
+	end
+	return ok, err
 end
 
 ---@param fd integer
@@ -769,7 +773,11 @@ function syscalls.read(fd, len)
 	local proc = Kocos.currentProcess()
 	local f = proc.fds[fd]
 	if not f then return nil, Kocos.EBADF end
-	return Kocos.handleDescriptorRequest(f, "read", len)
+	local data, err = Kocos.handleDescriptorRequest(f, "read", len)
+	if data then
+		Kocos.reportComponentUsage(f.device, "read", #data)
+	end
+	return data, err
 end
 
 ---@param fd integer
@@ -795,7 +803,7 @@ end
 
 ---@param fd integer
 ---@param action string
----@return boolean, string?
+---@return ...
 function syscalls.ioctl(fd, action, ...)
 	if type(fd) ~= "number" then return false, Kocos.EINVAL end
 	if type(action) ~= "string" then return false, Kocos.EINVAL end
@@ -803,6 +811,7 @@ function syscalls.ioctl(fd, action, ...)
 	local proc = Kocos.currentProcess()
 	local f = proc.fds[fd]
 	if not f then return false, Kocos.EBADF end
+	Kocos.reportComponentUsage(f.device, "ioctl")
 	return Kocos.handleDescriptorRequest(f, "ioctl", action, ...)
 end
 
@@ -1035,47 +1044,12 @@ function syscalls.isatty(fd)
 end
 
 ---@type Kocos.descriptorHandler
-function Kocos._ttyHandler(h, req, ...)
-	local proc = Kocos.processes[h.pid]
-	if not proc then return nil, Kocos.ESRCH end
-	local t = Kocos.procCall(proc, h._ttyhandler, req, ...)
-	if t[1] then
-		return table.unpack(t, 2)
-	else
-		return nil, t[2]
-	end
-end
-
----@type Kocos.descriptorHandler
 function Kocos._timerHandler(h, req, ...)
 	if req == "close" then
 		Kocos.cancelTimer(h._timer)
 		return true
 	end
 	return nil, Kocos.EBADF
-end
-
----@param handler fun(req: Kocos.descriptorReq, ...): ...
-function syscalls.opentty(handler, flags)
-	local proc = Kocos.currentProcess()
-	flags = flags or 0
-	if type(handler) ~= "function" then return nil, Kocos.EINVAL end
-	if type(flags) ~= "number" then return nil, Kocos.EINVAL end
-	flags = math.floor(flags)
-
-	---@type Kocos.descriptor
-	local desc = {
-		type = "tty",
-		state = "",
-		flags = flags,
-		pid = proc.pid,
-		rc = 1,
-		_ttyhandler = handler,
-		handler = Kocos._ttyHandler,
-	}
-	local avail = Kocos.availableDescriptorFor(proc)
-	proc.fds[avail] = desc
-	return avail
 end
 
 ---@class Kocos.terminfo
@@ -1106,6 +1080,13 @@ function Kocos._ptyHandler(handle, req, ...)
 	elseif req == "write" then
 		---@type string
 		local data = ...
+		if string.find(data, "\3") then
+			local proc = Kocos.processes[state.terminfo.fgpid]
+			if proc then
+				Kocos.sendSignal(proc, "SIGINT")
+			end
+			data = data:gsub("\3", "")
+		end
 		if isMaster then
 			state.termIn = state.termIn .. data
 		else
@@ -1215,6 +1196,27 @@ function syscalls.closepty(id)
 	end
 
 	Kocos.namedTerminals[id] = nil
+	return true
+end
+
+--- Closes all file descriptors except pty, and
+--- sets stdio, stdout, stderr and stdterm to pty.
+---@param pty integer
+---@return boolean, string?
+function syscalls.switchpty(pty)
+	local proc = Kocos.currentProcess()
+	local h = proc.fds[pty]
+	if not h then return false, Kocos.EBADF end
+	local allOtherFds = {}
+	for fd in pairs(proc.fds) do
+		if fd ~= pty then table.insert(allOtherFds, fd) end
+	end
+	for _, fd in ipairs(allOtherFds) do
+		syscalls.close(fd)
+	end
+	proc.fds[pty] = nil
+	h.rc = h.rc + 3
+	for i=0,3 do proc.fds[i] = h end
 	return true
 end
 

@@ -47,7 +47,7 @@ local keys = keyboard.keys
 ---@field defaultBg integer
 ---@field keysHeld table<integer, boolean>
 ---@field target? integer
----@field blinktimer? integer
+---@field lastblink? integer
 local vtty = {}
 vtty.__index = vtty
 
@@ -157,7 +157,6 @@ function vtty.create(controller, w, h, termname, stdColors)
 		defaultFg = stdColors[37],
 		defaultBg = stdColors[30],
 		keysHeld = {},
-		blinktimer = nil,
 	}, vtty)
 end
 
@@ -197,18 +196,22 @@ function vtty:hideCursor()
 end
 
 function vtty:disableBlink()
-	-- blinking is not yet implemented
-	if not self.blinktimer then return end
-	k.close(self.blinktimer)
-	self.blinktimer = nil
+	self.lastblink = nil
+	self:hideCursor()
 end
 
 function vtty:enableBlink()
-	-- blinking is not yet implemented
-	if self.blinktimer then return end
-	self.blinktimer = assert(k.mktimer(0.5, function()
-		self:toggleCursor()
-	end, math.huge))
+	self.lastblink = k.uptime()
+	self:showCursor()
+end
+
+function vtty:processBlink()
+	if self.lastblink then
+		local now = k.uptime()
+		if self.lastblink - now >= 0.5 then
+			self:toggleCursor()
+		end
+	end
 end
 
 ---@param n? integer
@@ -634,11 +637,7 @@ function vtty:putEvent(ev, ...)
 			end
 		end
 		if chr == 3 then -- Ctrl-C
-			if self.target then
-				k.kill(self.target, "SIGINT")
-			else
-				self.keybuf = self.keybuf .. string.char(3)
-			end
+			self.keybuf = self.keybuf .. string.char(3)
 			return
 		end
 		if keyboard.isTerminalPrintable(chr) then
@@ -679,6 +678,7 @@ function vtty:putEvent(ev, ...)
 end
 
 function vtty:terminfo()
+	---@return Kocos.terminfo
 	return {
 		termname = self.termname,
 		hw = table.copy(self.hw),
