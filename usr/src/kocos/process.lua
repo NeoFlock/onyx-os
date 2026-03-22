@@ -253,9 +253,9 @@ end
 ---@param proc Kocos.vmproc
 function Kocos.closeProcess(proc)
 	-- nice try
-	if proc.state == "dying" then return end
+	if proc.state == "dying" or proc.state == "dead" then return end
 	if not Kocos.processes[proc.pid] then return end
-	Kocos.terminateProcess(proc, 1)
+	if proc.state == "running" then Kocos.terminateProcess(proc, 1) end
 	proc.state = "dying"
 
 	-- Reparent children
@@ -660,7 +660,9 @@ function syscalls.waitpid(pid)
 	while proc.state == "running" do
 		Kocos.sysyield()
 	end
-	return proc.exitcode
+	local exit = proc.exitcode
+	Kocos.closeProcess(proc)
+	return exit
 end
 
 ---@param f? function
