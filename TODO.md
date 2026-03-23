@@ -1,8 +1,6 @@
 # For the kernel
 - ERASE the pid field from file descriptors and bound modules
 - make syscalls based on yielding and request/response
-- make TTYs work based off master/slave system (openpty is already implemented)
-- Add stats to track how much is written to/read from devices
 - Support the basic fs operations missing (`rename`, `symlink`, `link`)
 - Add some kind of inotify-like system
 - (maybe) some way to reload the entire kernel
@@ -13,6 +11,7 @@
 - Make `luapreproc` a full preprocessor
 
 # For the OS
+- rewrite the package manager to be based on TARs/KARs, and make the build system generate them
 - support hashed passwords
 - support `/etc/shadow`
 - making the current coreutils similar to the POSIX/GNU versions
